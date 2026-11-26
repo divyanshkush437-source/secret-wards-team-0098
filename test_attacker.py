@@ -175,7 +175,7 @@ def preserved(truth, report, texts):
 
 
 # ------------------------------------------------------------------ dates
-DATE_RE = re.compile(r'\d{1,4}[-/]\d{1,2}[-/]\d{2,4}')
+DATE_RE = re.compile(r'\d{1,4}[-/.]\d{1,2}[-/.]\d{2,4}')
 
 
 def intervals(truth, report, texts):
@@ -309,6 +309,134 @@ def registry_attack(kit: Path, truth, report, texts, records):
             'profiles_reidentified_conf>=0.5': sum(x >= 0.5 for x in profile_risks)}
 
 
+_NUM = re.compile(r'(?<![\d/.-])(\d{4})-(\d{2})-(\d{2})|(?<![\d/.-])(\d{1,2})[/-](\d{1,2})[/-](\d{4})(?![\d/])')
+_TXT = re.compile(r'(?<!\w)(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{4})', re.I)
+_MON = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
+
+
+def dates_in(text):
+    from datetime import date
+    out = set()
+    for m in _NUM.finditer(text):
+        try:
+            if m[1]:
+                out.add(date(int(m[1]), int(m[2]), int(m[3])))
+            else:
+                a, b, y = int(m[4]), int(m[5]), int(m[6])
+                for d, mo in ((a, b), (b, a)):        # the attacker tries both orders
+                    try:
+                        out.add(date(y, mo, d))
+                    except ValueError:
+                        pass
+        except ValueError:
+            pass
+    for m in _TXT.finditer(text):
+        try:
+            out.add(date(int(m[3]), _MON.index(m[2][:3].lower()) + 1, int(m[1])))
+        except ValueError:
+            pass
+    return out
+
+
+def targeted_attack(kit: Path, truth, report, texts, records):
+    """docs/ATTACKS.md A5: known visit date / condition / stay length / hospital,
+    with global-shift recovery. Profiles = pseudonym groups + unlinked records."""
+    import csv
+    from datetime import date, timedelta
+    reg = {r['rid']: r for r in csv.DictReader((kit / 'dev/attacker/registry.csv').open(encoding='utf-8'))}
+    districts = sorted({r['district'] for r in reg.values()}, key=len, reverse=True)
+    facts = [json.loads(l) for l in (kit / 'dev/attacker/known_facts.jsonl').read_text(encoding='utf-8').splitlines() if l]
+    by_sha = {f['input_sha256']: f['output'] for f in report['files']}
+    truth_patient = {}
+    for meta in truth['files'].values():
+        out = by_sha.get(meta.get('sha256'))
+        for loc, unit in meta.get('units', {}).items():
+            if unit.get('patient'):
+                truth_patient[(out, loc)] = unit['patient']
+    rid_of = {pt: info['rid'] for pt, info in truth['patients'].items()}
+    groups = defaultdict(list)
+    for i, r in enumerate(records):
+        groups[r['patient'] or ('solo', i)].append(r)
+    profiles = []
+    for key, recs in groups.items():
+        texts_ = [record_text(texts, r['file'], r['loc']) for r in recs]
+        blob = ' '.join(texts_)
+        intervals = set()
+        for t in texts_:
+            ds = sorted(dates_in(t))
+            intervals.update((b - a).days for a in ds for b in ds if b > a)
+        pt = Counter(truth_patient.get((r['file'], r['loc'])) for r in recs).most_common(1)[0][0]
+        profiles.append({'blob': blob.casefold(), 'dates': dates_in(blob), 'intervals': intervals,
+                         'rid': rid_of.get(pt), 'raw': blob})
+
+    def consistent(p, person):
+        dist = [d for d in districts if re.search(r'(?<!\w)' + re.escape(d) + r'(?!\w)', p['raw'])]
+        if dist and person['district'] not in dist:
+            return False
+        g = re.findall(r'(?<![A-Za-z])(?:/\s*|Sex:\s*)([MF])\b', p['raw'])
+        if g and g[0] != person['gender']:
+            return False
+        m = AGE_BAND.search(p['raw'])
+        if m and person['age']:
+            lo, hi = (int(m[1]), int(m[2])) if m[1] else (int(m[3]), 130)
+            if not lo - 1 <= int(person['age']) <= hi + 2:
+                return False
+        return True
+
+    cond_count = Counter()
+    for f in facts:
+        c = f.get('condition_hint')
+        if c:
+            cond_count[c] = sum(c.casefold() in p['blob'] for p in profiles)
+
+    def weights(f, shift=0):
+        person = reg.get(f['rid'])
+        known = {date.fromisoformat(d) for d in f['visit_dates']}
+        out = []
+        for p in profiles:
+            if person is None or not consistent(p, person):
+                out.append(0.0)
+                continue
+            w = 0.0
+            if known & {d + timedelta(days=shift) for d in p['dates']}:
+                w += 1
+            c = f.get('condition_hint')
+            if c and c.casefold() in p['blob']:
+                w += 8 if cond_count[c] <= 3 else 1
+            if f.get('stay_days') and f['stay_days'] in p['intervals']:
+                w += 1
+            if w and f['hospital'].casefold() in p['blob']:
+                w *= 2
+            out.append(w)
+        return out
+
+    # Global-shift recovery from confidently identified people.
+    offsets = Counter()
+    for f in facts:
+        w = weights(f)
+        total = sum(w)
+        for p, x in zip(profiles, w):
+            if total and x / total >= 0.9:
+                for d in p['dates']:
+                    for k in f['visit_dates']:
+                        offsets[((date.fromisoformat(k) - d).days, f['rid'])] += 1
+    per_offset = Counter(o for o, _ in offsets)
+    shift = next((o for o, n in per_offset.most_common() if n >= 2 and o != 0), 0)
+    success, confident, decoy_claims, real = [], 0, 0, 0
+    for f in facts:
+        w = weights(f, shift)
+        total = sum(w)
+        if f['rid'] not in rid_of.values():
+            decoy_claims += total > 0
+            continue
+        real += 1
+        prob = sum(x for p, x in zip(profiles, w) if p['rid'] == f['rid']) / total if total else 0.0
+        success.append(prob)
+        confident += prob >= 0.5
+    return {'known_people': real, 'mean_success_probability': round(sum(success) / len(success), 4) if success else 0,
+            'identified_conf>=0.5': confident, 'global_shift_recovered': bool(shift), 'decoys_claimed': decoy_claims}
+
+
 # ------------------------------------------------------------------ scale
 def scale_run(kit: Path, factor: int):
     """Copy the practice input `factor` times and time the real CLI."""
@@ -346,6 +474,7 @@ def main():
         result['dates'] = intervals(truth, report, texts)
         result['utility'] = preserved(truth, report, texts)
         result['attack'] = registry_attack(args.kit, truth, report, texts, records)
+        result['targeted_attack'] = targeted_attack(args.kit, truth, report, texts, records)
     if args.scale:
         result['scale'] = scale_run(args.kit, args.scale)
     print(json.dumps(result, indent=2))

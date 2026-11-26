@@ -8,7 +8,8 @@ during the event. The 2-page brief is [Project_Brief.pdf](Project_Brief.pdf).
 
 ```sh
 python3 -m pip install -r requirements.txt     # optional; core is standard library only
-python3 -m unittest -q                         # 164 tests
+python3 -m unittest -q                         # 169 tests
+python3 contract_check.py --input INPUT --output OUTPUT   # official format rules + stricter checks
 # RAKSHA_SECRET must already be set privately in your environment.
 python3 main.py --input /path/to/input --output /path/to/fresh_output
 ```
@@ -25,13 +26,15 @@ The normal command (also in raksha.toml) runs the full pipeline through
 | Measure | Result |
 |---|---|
 | Files sanitized / quarantined | 193 / 7 (822 records, 775 linked) |
-| Linkage precision / recall / F0.5 | 1.000 / 0.985 / 0.997; homonym pairs 2/2 kept apart |
+| Linkage precision / recall / F0.5 | 1.000 / 1.000 / 1.000; homonym pairs 2/2 kept apart; every trap patient 100% |
 | Direct identifiers surviving | 0 of 1,250 Aadhaar/ABHA/PAN/phone/email/UHID mentions |
-| Clinical values kept | 4,801 / 4,855 (54 districts suppressed for high-risk patients) |
+| Clinical values kept | 4,787 / 4,855 (47 districts and 21 single-patient disease names generalised for privacy) |
 | Admission/discharge intervals | 22 / 22 exact after per-patient shifting |
-| Registry attack (district, gender, band, PIN prefix) | 0/50 profiles and 0/746 records re-identified at ≥ 0.5 (raw input: 10 and 11) |
+| Registry attack (district, gender, band, PIN prefix) | 0/48 profiles and 0/746 records re-identified at ≥ 0.5 (raw input: 10 and 11) |
+| Targeted attack (known visit date, hospital, condition, stay) | 4/14 known people (raw 2/14); global date shift not recoverable |
+| Unseen-format copy (renamed columns, labels, dd.mm.yyyy dates) | linkage 1.000 / 1.000, 0 identifiers or villages leaked, contract OK |
 | Determinism | byte-identical with the same secret; 0 pseudonyms shared under another secret |
-| Speed / memory | 4.6 s, 34 MB; 6× data (1,200 files) 43 s, 149 MB |
+| Speed / memory | 4.7 s, 35 MB; 6× data (1,200 files) 45 s, 150 MB |
 
 These are practice numbers, not a guarantee on hidden data.
 

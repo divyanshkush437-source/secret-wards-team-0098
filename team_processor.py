@@ -52,18 +52,53 @@ def romanised_hint(key):
     if re.search(r'naam|name|nam$', compact):
         if _DOCTOR_KEY.search(compact) or re.search(r'hospital|lab|facility|drug|test|file|user', compact):
             return None
-        return 'relative' if _RELATIVE_KEY.search(compact) else 'patient name'
+        return 'relative' if _RELATIVE_KEY.search(compact.replace('patient', '')) else 'patient name'
     if re.fullmatch(r'(patient)?(umar|umr|umra|aayu|aayu|ayu)', compact):
         return 'age'
     if re.fullmatch(r'(ling|linga)', compact):
         return 'gender'
     if re.search(r'janm|janam', compact):
         return 'dob'
-    if re.fullmatch(r'(jila|zila|zilla)', compact):
+    if re.fullmatch(r'(jila|zila|zilla|dist|distt|districtname)', compact):
         return '__district__'
+    if re.search(r'locality|landmark|colony|residence|resident|addr|basti|mohalla|street|housename|houseno|town|tehsil|taluk|block|panchayat', compact):
+        return 'address'
+    if re.search(r'village|gaon|gram', compact):
+        return 'address'
+    if re.search(r'pincode|postal|zip', compact):
+        return 'pincode'
+    if re.search(r'^(sex|gender|ling)', compact):
+        return 'gender'
+    if re.search(r'^(age|umar|umr|aayu)', compact):
+        return 'age'
+    if re.search(r'range|unit|value|result|code|loinc|test', compact):
+        return None                      # lab/reference columns are clinical, never identifiers
+    if re.search(r'(uhid|mrn|regno|regid|registration|ipno|ipdno|opdno|admissionno|patientid|ptid|ptref|patientref|ptreference|hospid|hospreg|cardno)', compact):
+        return 'uhid'
+    if re.search(r'dob|dateofbirth|birth', compact):
+        return 'dob'
     if re.fullmatch(r'(mobile|phone|contact|mob)(no|number)?', compact):
         return ''
     return None
+
+
+ICD_CHAPTERS = [('A00', 'B99', 'I: infectious'), ('C00', 'D49', 'II: neoplasm'), ('D50', 'D89', 'III: blood'),
+                ('E00', 'E89', 'IV: endocrine'), ('F01', 'F99', 'V: mental'), ('G00', 'G99', 'VI: nervous system'),
+                ('H00', 'H59', 'VII: eye'), ('H60', 'H95', 'VIII: ear'), ('I00', 'I99', 'IX: circulatory'),
+                ('J00', 'J99', 'X: respiratory'), ('K00', 'K95', 'XI: digestive'), ('L00', 'L99', 'XII: skin'),
+                ('M00', 'M99', 'XIII: musculoskeletal'), ('N00', 'N99', 'XIV: genitourinary'),
+                ('O00', 'O9A', 'XV: pregnancy'), ('P00', 'P96', 'XVI: perinatal'), ('Q00', 'Q99', 'XVII: congenital'),
+                ('R00', 'R99', 'XVIII: symptoms'), ('S00', 'T88', 'XIX: injury'), ('V00', 'Y99', 'XX: external cause'),
+                ('Z00', 'Z99', 'XXI: health status')]
+_TEXT_DX = re.compile(r'([A-Za-z\u0900-\u097f][A-Za-z\u0900-\u097f ,\'’()/-]{2,80}?)\s*\(\s*([A-TV-Z][0-9]{2}(?:\.[0-9]{1,2})?)\s*\)')
+
+
+def icd_chapter(code):
+    head = code[:3].upper()
+    for lo, hi, name in ICD_CHAPTERS:
+        if lo <= head <= hi:
+            return name
+    return 'other'
 
 
 class Processor(DetectorAdapter):
@@ -81,6 +116,9 @@ class Processor(DetectorAdapter):
         self._ctx = None
         self._generalized_record = False
         self.district_pattern = None
+        self.dx_pairs = set()
+        self.rare_dx_pattern = None
+        self.rare_dx_label = {}
 
     def _hint(self, key, path, inherited='', role=''):
         hint = super()._hint(key, path, inherited, role)
@@ -171,6 +209,7 @@ class Processor(DetectorAdapter):
                     self._places(evidence, span.text)
             if VILLAGE_KEYS.search(key) and hint != '__district__':
                 self._places(evidence, stripped)
+        self._collect_diagnoses(data)
         if loc is None:
             return                      # export envelope: never a patient record
         evidence.ages = {(a, None) for a in evidence.ages}
@@ -198,6 +237,31 @@ class Processor(DetectorAdapter):
         if len(evidence.genders) > 1:
             evidence.ambiguous = True
         self.linker.add((file_id, loc), evidence)
+
+    def _collect_diagnoses(self, data, depth=0):
+        """Remember (ICD code, display text) pairs so rare disease names can be generalised."""
+        if depth > 64:
+            return
+        if isinstance(data, dict):
+            code, display = data.get('code'), data.get('display')
+            if isinstance(code, str) and isinstance(display, str) and ICD.fullmatch(code.strip()):
+                self.dx_pairs.add((code.strip().upper(), display.strip()))
+            coding = data.get('coding')
+            if isinstance(coding, list) and isinstance(data.get('text'), str):
+                for c in coding:
+                    if isinstance(c, dict) and isinstance(c.get('code'), str) and ICD.fullmatch(c['code'].strip()):
+                        self.dx_pairs.add((c['code'].strip().upper(), data['text'].strip()))
+            for v in data.values():
+                self._collect_diagnoses(v, depth + 1)
+        elif isinstance(data, list):
+            for v in data:
+                self._collect_diagnoses(v, depth + 1)
+        elif isinstance(data, str) and '(' in data:
+            for m in _TEXT_DX.finditer(data):
+                display = re.split(r'[:;\n]|\b(?:and|with|of)\s*$', m[1])[-1].strip(' ,-')
+                display = re.sub(r'^(?:diagnosis|dx|निदान|treated for|k/c/o|c/o)\s*[:-]?\s*', '', display, flags=re.I).strip()
+                if len(display) >= 3:
+                    self.dx_pairs.add((m[2].upper(), display))
 
     def _places(self, evidence, text):
         for t in L.name_tokens(text):
@@ -251,6 +315,24 @@ class Processor(DetectorAdapter):
             if ev.districts and info['district'] is None:
                 info['district'] = sorted(ev.districts)[0]
         self.levels = P.risk_levels(subjects, self.config)
+        # Disease names held by very few patients point straight at one profile
+        # for an attacker who knows the condition. Keep the exact ICD code (for
+        # statistics) and replace the *name* with its ICD-10 chapter.
+        limit = self.config.get('rare_name_max_patients', 1)
+        code_patients = Counter()
+        for info in subjects.values():
+            if info.get('weight', 1):
+                code_patients.update(info['codes'])
+        rare_codes = {c for c, n in code_patients.items() if n <= limit}
+        common_names = {d.casefold() for c, d in self.dx_pairs if c not in rare_codes}
+        rare = {}
+        for code, display in sorted(self.dx_pairs):
+            if code in rare_codes and display.casefold() not in common_names and len(display) >= 4:
+                rare[display.casefold()] = 'rare condition (ICD-10 ch. ' + icd_chapter(code) + ')'
+        if rare:
+            self.rare_dx_label = rare
+            names = sorted(rare, key=lambda v: (-len(v), v))
+            self.rare_dx_pattern = re.compile(r'(?<![\w\u0900-\u097f])(?:' + '|'.join(re.escape(v) for v in names) + r')(?![\w\u0900-\u097f])', re.I)
 
     # ------------------------------------------------------------ clean
     def clean(self, file_id, loc, data):
@@ -425,6 +507,11 @@ class Processor(DetectorAdapter):
                 continue
             self.entities[kind] += 1
             result = result[:span.start] + replacement + result[span.end:]
+        if self.rare_dx_pattern is not None:
+            result, count = self.rare_dx_pattern.subn(lambda m: self.rare_dx_label[m[0].casefold()], result)
+            if count:
+                self.entities['RARE_DIAGNOSIS'] += count
+                self._generalized_record = True
         if level >= 2 and self.district_pattern is not None:
             # High-risk patients: letterheads such as "Hospital, Barabanki" or
             # "Labs (Lucknow)" would otherwise reveal the home district.

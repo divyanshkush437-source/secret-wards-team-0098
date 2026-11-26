@@ -29,6 +29,7 @@ DEFAULTS = {
     'k_threshold': 3,                   # min patients sharing a diagnosis code
     'registry_ratio': 4,                # attacker registry size / patient count (kit: 4-5x)
     'k_registry': 5,                    # min expected registry people per released cell
+    'rare_name_max_patients': 1,        # disease names held by <= this many patients are generalised
     'pin_prefix_digits': 3,             # PIN 226001 -> 226XXX at level 0
 }
 

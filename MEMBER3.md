@@ -8,6 +8,7 @@
 | `config/privacy.json` | Tunable privacy rules (band widths, shift range, k thresholds) |
 | `test_member3.py` | Unit and end-to-end tests with planted fictional canaries |
 | `test_attacker.py` | Development-only red-team harness against the practice kit (never imported at runtime) |
+| `contract_check.py` | The kit's output-format rules plus stricter honesty checks (`CONTRACT OK`) |
 | `docs/make_brief.py` | Regenerates `Project_Brief.pdf` (needs `reportlab`, dev only) |
 
 ## Linkage
@@ -46,7 +47,9 @@ Records with only a first name and no second clue stay `patient: null`.
   `4 × patients(district) × share(gender) × share(age band)`, and widen until it is at
   least 5: first a 20-year band (PIN removed), then no district. At that level district
   names are also masked in letterheads ("Hospital, Barabanki").
-* Rare diagnosis (ICD code held by < 3 patients): coarsest level, diagnosis kept.
+* Rare diagnosis (ICD code held by < 3 patients): coarsest level. If only one patient has
+  it, the disease *name* is replaced by its ICD-10 chapter ("rare condition (ICD-10 ch. I:
+  infectious) (A82.9)"); the exact code stays for statistics.
 
 Measured on practice data with `test_attacker.py` (district, gender, age band, PIN
 prefix filters, the order the kit's ATTACKS.md documents):
@@ -56,13 +59,23 @@ prefix filters, the order the kit's ATTACKS.md documents):
 | Raw input | 10 / 48 | 11 / 746 | – |
 | Fixed 5-year bands | 9 / 50 | – | 3 |
 | Fixed 10-year bands | 5 / 50 | 4 / 746 | 3 |
-| Adaptive (current) | **0 / 50** | **0 / 746** | 54 / 93 |
+| Adaptive (current) | **0 / 48** | **0 / 746** | 47 / 93 |
+
+Targeted attack (ATTACKS.md A5: known visit date, hospital, condition, stay length,
+global-shift recovery): 4 of 14 known people at ≥ 0.5 (raw input 2 of 14), 0 decoys
+claimed, no global shift recoverable. The remaining hits come from exact stay lengths and
+condition + demographics; removing every hospital name only moved the mean 0.24 → 0.23.
+
+Unseen-format check: a copy of the practice set with renamed CSV headers and JSON keys,
+reworded note labels, `dd.mm.yyyy` dates and UPPERCASE names gives linkage 1.000 / 1.000,
+zero identifier/village leaks, 23/23 intervals and a clean contract check.
 
 ## Reproduce
 
 ```sh
 python3 -m unittest -q
 RAKSHA_SECRET=practice python3 main.py --input KIT/dev/input --output out
+python3 contract_check.py --input KIT/dev/input --output out
 python3 test_attacker.py --kit KIT --output out
 python3 test_attacker.py --kit KIT --scale 6
 ```

@@ -230,6 +230,38 @@ class HindiDetectionTests(unittest.TestCase):
         self.assertEqual(people, ['ज़ोरवान टकरेली'])
 
 
+class UnseenLabelTests(unittest.TestCase):
+    def test_romanised_and_renamed_labels(self):
+        from team_processor import romanised_hint as h
+        cases = {'Name of Patient': 'patient name', 'Rogi Naam': 'patient name', 'Pita/Pati ka Naam': 'relative',
+                 'Father/Husband Name': 'relative', 'Locality': 'address', 'Dist': '__district__',
+                 'Sex (M/F)': 'gender', 'Umar': 'age', 'Hospital Reg ID': 'uhid', 'pt_reference': 'uhid',
+                 'reference_range': None, 'ref_doctor': None, 'unit': None}
+        for label, want in cases.items():
+            self.assertEqual(h(label), want, label)
+
+    def test_dot_dates_detected_and_shifted(self):
+        from detector import detect_text
+        self.assertEqual(detect_text('Date of Admission: 15.05.2026').dates, ['2026-05-15'])
+        self.assertFalse(detect_text('Temp 101.2 F, Hb 12.5 g/dL').spans)
+        self.assertEqual(P.shift_text_date('15.05.2026', 10), '25.05.2026')
+
+    def test_name_variants_with_shared_id(self):
+        a = L.Evidence(names={L.name_tokens('Brajesh Yadav')}, ids={('UHID', 'X1234567')})
+        b = L.Evidence(names={L.name_tokens('Brijesh Yadav')}, ids={('UHID', 'X1234567')})
+        self.assertGreaterEqual(L.score(a, b), L.THRESHOLD)
+        c = L.Evidence(names={L.name_tokens('Brajesh Yadav')}, places={'brindpur'})
+        d = L.Evidence(names={L.name_tokens('Brijesh Yadav')}, places={'brindpur'})
+        self.assertLess(L.score(c, d), L.THRESHOLD)      # without a shared ID: different people
+
+    def test_fragmented_note_detection(self):
+        from detector import detect_text
+        spans = detect_text('Asha, W/o Kamal, discharged in stable condition.').spans
+        self.assertEqual([(x.entity_type, x.text) for x in spans], [('PERSON', 'Asha'), ('RELATIVE', 'Kamal')])
+        spans = detect_text('Patient: Mahesh Chauhan S/o Naresh Chauhan').spans
+        self.assertEqual([x.text for x in spans], ['Mahesh Chauhan', 'Naresh Chauhan'])
+
+
 class LetterheadTests(unittest.TestCase):
     def test_high_risk_letterhead_district_masked(self):
         p = Processor(b'k')
@@ -323,8 +355,10 @@ class EndToEndTests(unittest.TestCase):
     def test_clinical_values_survive(self):
         out = self.out['a'][0]
         note = next(out.glob('sanitized/discharge/*.txt')).read_text(encoding='utf-8')
-        for keep in ('Dr. Ramesh Srivastava', 'Paracetamol 650 mg 1-0-1 x 5 days', 'Temp 101.2 F', 'BP 150/90', 'Dengue fever (A97.9)'):
+        for keep in ('Dr. Ramesh Srivastava', 'Paracetamol 650 mg 1-0-1 x 5 days', 'Temp 101.2 F', 'BP 150/90', '(A97.9)'):
             self.assertIn(keep, note)
+        # Only one patient has dengue here: the name is generalised, the ICD code kept.
+        self.assertIn('rare condition (ICD-10 ch. I: infectious) (A97.9)', note)
         hindi = (out / 'sanitized/notes/hindi_note.txt').read_text(encoding='utf-8')
         self.assertIn('Bukhar 102 F', hindi)
         self.assertIn('Dolo 650 BD x 5 days', hindi)
@@ -347,6 +381,12 @@ class EndToEndTests(unittest.TestCase):
             if ref:
                 self.assertIn(ref, urls)
         self.assertRegex(bundle['entry'][0]['resource']['birthDate'], r'^\d{4}-\d{2}-\d{2}$')
+
+    def test_output_contract(self):
+        from contract_check import check
+        errors, warns = check(self.input, self.out['a'][0])
+        self.assertEqual(errors, [])
+        self.assertEqual(warns, [])
 
     def test_broken_file_quarantined(self):
         report = self.out['a'][1]

@@ -40,6 +40,12 @@ def read_name(text, start, honorifics, allow_lower=False):
             break
         if not allow_lower and not is_name_token(m[0]):
             break
+        if re.match(r'(?i)[sdwck]/\s*o\b', text[m.start():m.start() + 5]):
+            break                       # S/o, D/o, W/o, C/o, K/C/O start a new phrase
+        # After a capitalised first token, a lowercase word ends the name
+        # ("W/o Kamal, discharged in ..."); all-lowercase names still work.
+        if matches and is_name_token(matches[0][0]) and not is_name_token(m[0]):
+            break
         matches.append(m)
         gap = re.match(r'[ \t]*(?:,[ \t]*)?', text[m.end():])
         cursor = m.end() + gap.end()
@@ -61,6 +67,18 @@ def name_candidates(text, policy, field_hint=''):
         span = read_name(text, m.end(), honor, True)
         if span:
             candidates.append((*span, 'RELATIVE', .94))
+        # "Meera, W/o Rajan": the capitalised name right before the marker is the patient.
+        tokens = list(TOKEN.finditer(text, max(0, m.start() - 60), m.start()))
+        selected, end = [], m.start()
+        for token in reversed(tokens):
+            if text[token.end():end].strip(' ,') or not is_name_token(token[0]):
+                break
+            selected.append(token)
+            end = token.start()
+            if len(selected) == 3:
+                break
+        if selected and m[0].strip(' :=-').casefold() in {'s/o', 'd/o', 'w/o', 'son of', 'daughter of', 'wife of', 'husband of'}:
+            candidates.append((selected[-1].start(), selected[0].end(), 'PERSON', .9))
     for m in marker_matches(text, ['patient', 'patient name', 'name', 'नाम', 'मरीज', 'रोगी']):
         span = read_name(text, m.end(), honor, ':' in m[0] or '=' in m[0])
         if span:

@@ -143,21 +143,22 @@ def build():
         ['Village, house, locality', 'Removed; district kept unless the patient\'s estimated registry cell is &lt; 5 people',
          'Cell = 4 x patients(district) x share(gender) x share(band); then 20-yr band, then no district (also masked in letterheads)'],
         ['PIN', '3-digit prefix (226XXX); removed at higher risk', '54 of 93 district probes are given up for privacy'],
-        ['Rare diagnosis', 'Kept; demographics around it coarsened (20-yr band, no district, no PIN) if < 3 patients share the ICD code',
-         'Utility of diagnosis statistics kept; 3 district values lost'],
+        ['Rare diagnosis', 'ICD code kept exactly; demographics coarsened if < 3 patients share it; disease <i>name</i> replaced by its ICD-10 chapter if only 1 patient has it',
+         'Diagnosis statistics (codes) kept; rabies-style "only patient with X" hits removed'],
     ], [30 * mm, 78 * mm, W - 108 * mm]))
     s.append(Spacer(1, 3))
     s.append(table([
         ['Measure (practice data, 200 files)', 'Result'],
         ['Files sanitized / quarantined / records', '193 / 7 / 822 records, 775 linked'],
-        ['Linkage pairwise precision / recall / F0.5', '1.000 / 0.985 / 0.997 (6,892 linkable pairs); homonyms 2/2 separated'],
-        ['Trap patients (pairs linked)', 'language 100%, meaning 100%, re-identification 100%, fragmented 87-89%'],
+        ['Linkage pairwise precision / recall / F0.5', '1.000 / 1.000 / 1.000 (6,892 linkable pairs); homonyms 2/2 separated; all trap patients 100%'],
+        ['Unseen-format copy (renamed columns/keys/labels, dd.mm.yyyy dates, UPPERCASE names)', 'precision / recall 1.000 / 1.000, 0 IDs or villages leaked, 23/23 intervals, contract OK'],
         ['Direct identifiers surviving', '0 of 1,250 (Aadhaar, ABHA, PAN, phone, email, UHID/IPD); villages/houses/localities 0 of 389'],
         ['Names surviving', 'Devanagari 0/135, Hinglish 2/111, Latin 1/2,587 (all 3 are the allowed doctor name in multi-visit files); canaries 0'],
-        ['Clinical probes kept', '4,801 / 4,855 (98.9%; all 54 lost are districts suppressed for high-risk patients)'],
-        ['Registry attack (district, gender, band, PIN prefix)', 'profiles &ge; 0.5: 0 / 50 (raw input 10 / 48); records: 0 / 746 (raw 11); mean on true person 0.05 per profile'],
+        ['Clinical probes kept', '4,787 / 4,855 (98.6%): 47 districts of high-risk patients, 21 names of single-patient diseases (ICD code kept)'],
+        ['Registry attack (district, gender, band, PIN prefix)', 'profiles &ge; 0.5: 0 / 48 (raw input 10 / 48); records: 0 / 746 (raw 11); mean on true person 0.05'],
+        ['Targeted attack (known visit date, hospital, condition, stay)', '4 / 14 known people at &ge; 0.5 (raw 2 / 14); global shift not recoverable; 0 decoys claimed'],
         ['Determinism / other secret', 'byte-identical sanitized/ and records.jsonl; 0 pseudonyms shared across secrets'],
-        ['Speed and memory', '4.6 s, 34 MB (practice); 6x data: 1,200 files in 43 s, 149 MB peak'],
+        ['Speed and memory', '4.7 s, 35 MB (practice); 6x data: 1,200 files in 45 s, 150 MB peak; 169 tests'],
     ], [62 * mm, W - 62 * mm]))
     s.append(P('6. Security design', h2))
     s.append(P('All evidence stays in process memory; no intermediate files are written (the only staging directory '
@@ -170,8 +171,8 @@ def build():
     s.append(P('&bull; Practice data has only ~50 patients; the registry size is estimated (4x patients), and our attack is an '
                'approximation of the organisers\' attacker (it ignores names, which we remove). &bull; Rare-diagnosis protection coarsens '
                'demographics; the diagnosis itself plus exact stay length can still single out a patient for an attacker '
-               'who already knows both (targeted attack A5 was not measured). &bull; Fragmented notes with only a first name and no relative stay unlinked by '
-               'design. &bull; Context rules can still miss names in unseen label styles; free-text village names without '
+               'who already knows both: our targeted attack still finds 4 of 14 known people (raw 2), because exact stay lengths, which the '
+               'rules require us to keep, plus demographics single them out; hiding every hospital name only moved it 0.24 &rarr; 0.23. &bull; Context rules can still miss names in unseen label styles; free-text village names without '
                'markers may survive. &bull; Scaling on duplicated data grew faster than linear (6x data, ~10x time) '
                'because large blocks share identifiers. &bull; No ML model is used; all rules were written during the event.', small))
     doc.build(s)

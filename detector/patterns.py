@@ -11,7 +11,7 @@ PAN = re.compile(r'(?<!\w)[A-Z]{5}[0-9]{4}[A-Z](?!\w)')
 AADHAAR = re.compile(r'(?<![\w\d])\d{4}[ -]?\d{4}[ -]?\d{4}(?![\w\d])')
 ABHA = re.compile(r'(?<![\w\d])\d{2}[ -]?\d{4}[ -]?\d{4}[ -]?\d{4}(?![\w\d])')
 PHONE = re.compile(r'(?<!\w)(?:(?:\+91[ .-]?|0)?[6-9६-९]\d{4}[ .-]?\d{5}|\(0\d{2,4}\)[ .-]?\d{6,8}|0\d{2,4}-\d{6,8})(?!\w)')
-NUM_DATE = re.compile(r'(?<![\w/.-])(?:\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[-/]\d{1,2}[-/](?:\d{4}|\d{2}))(?![\w/.-])')
+NUM_DATE = re.compile(r'(?<![\w/.-])(?:\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[-/]\d{1,2}[-/](?:\d{4}|\d{2})|\d{1,2}\.\d{1,2}\.\d{4}|\d{4}\.\d{1,2}\.\d{1,2})(?![\w/-]|\.\d)')
 TEXT_DATE = re.compile(r'(?<!\w)\d{1,2}\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{4}(?!\w)', re.I)
 ID_LABEL = re.compile(r'\b(?:UHID|MRN|IPD|OPD|Reg(?:istration)?\s*(?:No\.?)?|Insurance(?:\s*(?:ID|No\.?))?|Policy\s*(?:ID|No\.?))\s*[:=#-]?\s*([A-Za-z0-9][A-Za-z0-9/-]{1,39})\b', re.I)
 PIN = re.compile(r'(?<!\d)[1-9]\d{5}(?!\d)')
@@ -39,7 +39,7 @@ def normalize_phone(text):
 
 def normalize_date(value, pivot=30, order="DMY"):
     try:
-        pieces = re.split(r'[-/\s]+', value.strip())
+        pieces = re.split(r'[-/.\s]+', value.strip())
         if pieces[1].isalpha():
             months = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec']
             d, m, y = int(pieces[0]), months.index(pieces[1][:3].lower()) + 1, int(pieces[2])

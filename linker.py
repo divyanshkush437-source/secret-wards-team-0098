@@ -117,6 +117,7 @@ def _strip_accents(text: str) -> str:
 def simplify(token: str) -> str:
     """Phonetic folding applied identically to both scripts' Latin forms."""
     t = token
+    t = re.sub(r'ay$', 'ai', t)                # vijay / vijai
     t = t.replace('x', 'ks').replace('q', 'k').replace('z', 'j').replace('w', 'v')
     t = re.sub(r'(?<=[a-z])h', '', t)          # kh->k, bh->b, sh->s, ph->p ...
     t = t.replace('f', 'p')
@@ -221,10 +222,15 @@ def token_match(a: str, b: str) -> float:
 
 
 TOKEN_OK = 0.93
+RELAXED_OK = 0.85      # only when the two records already share a hospital/national ID
 
 
-def compare_names(a: tuple, b: tuple) -> str:
-    """Return 'full', 'partial', 'none' or 'conflict' for two token tuples."""
+def compare_names(a: tuple, b: tuple, ok: float = None) -> str:
+    """Return 'full', 'partial', 'none' or 'conflict' for two token tuples.
+
+    ``ok`` lowers the token threshold when other evidence (a shared hospital ID)
+    already ties the records together, so spelling variants still agree."""
+    ok = TOKEN_OK if ok is None else ok
     ia, ib = identifying(a), identifying(b)
     if not ia or not ib:
         return 'none'
@@ -240,10 +246,10 @@ def compare_names(a: tuple, b: tuple) -> str:
             s = token_match(t, u)
             if s > best:
                 best, best_j = s, j
-        if best >= TOKEN_OK or (best >= 0.85 and (len(t) == 1 or len(long_[best_j]) == 1)):
+        if best >= ok or (best >= 0.85 and (len(t) == 1 or len(long_[best_j]) == 1)):
             used.add(best_j)
             matched += 1
-            initials += best < TOKEN_OK
+            initials += best < ok
     if matched == 0:
         return 'conflict'
     if matched < len(short):
@@ -315,17 +321,18 @@ def conflict(a: Evidence, b: Evidence) -> bool:
             return True
     full_a = [n for n in a.names if len(identifying(n)) >= 2]
     full_b = [n for n in b.names if len(identifying(n)) >= 2]
-    if full_a and full_b and not any(compare_names(x, y) in ('full', 'partial') for x in full_a for y in full_b):
+    ok = RELAXED_OK if a.ids & b.ids else None
+    if full_a and full_b and not any(compare_names(x, y, ok) in ('full', 'partial') for x in full_a for y in full_b):
         return True
     return False
 
 
-def _best_name(a: set, b: set) -> str:
+def _best_name(a: set, b: set, ok: float = None) -> str:
     order = {'full': 3, 'partial': 2, 'none': 1, 'conflict': 0}
     best = None
     for x in a:
         for y in b:
-            r = compare_names(x, y)
+            r = compare_names(x, y, ok)
             if best is None or order[r] > order[best]:
                 best = r
     return best or 'none'
@@ -344,7 +351,7 @@ def score(a: Evidence, b: Evidence) -> int:
         s += WEIGHTS['id']
     if a.phones & b.phones:
         s += WEIGHTS['phone']
-    name = _best_name(a.names, b.names) if a.names and b.names else 'none'
+    name = _best_name(a.names, b.names, RELAXED_OK if a.ids & b.ids else None) if a.names and b.names else 'none'
     if name in WEIGHTS:
         s += WEIGHTS[name]
     if a.relatives and b.relatives and _best_name(a.relatives, b.relatives) in ('full', 'partial'):

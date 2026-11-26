@@ -11,5 +11,6 @@
   "k_threshold": 3,
   "pin_prefix_digits": 3,
   "registry_ratio": 4,
-  "k_registry": 5
+  "k_registry": 5,
+  "rare_name_max_patients": 1
 }
