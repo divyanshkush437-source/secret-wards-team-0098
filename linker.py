@@ -344,6 +344,12 @@ def conflict(a: Evidence, b: Evidence) -> bool:
     if not (ya and yb) and a.ages and b.ages:
         if min(abs(x[0] - y[0]) for x in a.ages for y in b.ages) > 3:
             return True
+    # A household phone and a repeated full name do not override contradictory
+    # named guardians. Require stronger evidence before joining such records.
+    if (a.phones & b.phones and not a.ids & b.ids and a.relatives and b.relatives
+            and _best_name(a.relatives, b.relatives) == 'conflict'
+            and _best_name(a.names, b.names) == 'full'):
+        return True
     full_a = [n for n in a.names if len(identifying(n)) >= 2]
     full_b = [n for n in b.names if len(identifying(n)) >= 2]
     ok = RELAXED_OK if a.ids & b.ids else None

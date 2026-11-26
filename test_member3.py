@@ -183,7 +183,7 @@ class PrivacyTests(unittest.TestCase):
         subjects['lonely'] = {'codes': set(), 'ages': {97}, 'gender': 'M', 'district': 'tiny'}
         strict = dict(P.DEFAULTS, max_level=3)
         self.assertEqual(P.risk_levels(subjects, strict)['lonely'], 3)
-        self.assertEqual(P.risk_levels(subjects)['lonely'], 2)
+        self.assertEqual(P.risk_levels(subjects, dict(P.DEFAULTS, max_level=2))['lonely'], 2)
         self.assertEqual(P.age_band(97, 2), '18+')
 
     def test_pin(self):
@@ -220,7 +220,8 @@ def build_dataset(root: Path):
             'identifier': [{'system': 'urn:zzh', 'value': 'ZZH/26/000123'}],
             'name': [{'given': ['Zorvan'], 'family': 'Takreli'}], 'gender': 'female',
             'birthDate': '1979-04-12', 'telecom': [{'system': 'phone', 'value': CANARY_PHONE}]}},
-        {'fullUrl': 'urn:uuid:e1', 'resource': {'resourceType': 'Encounter', 'id': 'e1',
+        {'fullUrl': 'urn:uuid:e1', 'resource': {'resourceType': 'Encounter', 'id': 'e1', 'status': 'finished',
+            'class': {'system': 'http://terminology.hl7.org/CodeSystem/v3-ActCode', 'code': 'IMP'},
             'subject': {'reference': 'urn:uuid:p1', 'display': CANARY},
             'period': {'start': '2026-05-15', 'end': '2026-05-24'}}},
         {'fullUrl': 'urn:uuid:d1', 'resource': {'resourceType': 'DocumentReference', 'id': 'd1',
@@ -345,6 +346,72 @@ class HiddenFormatTests(unittest.TestCase):
         self.assertEqual(p.linker.records[('f', 'doc')].names, {L.name_tokens('Reena')})
 
 
+class RelativeFieldRegressionTests(unittest.TestCase):
+    def test_fhir_ids_with_age_like_segments_remain_valid_and_linked(self):
+        rid = 'ef33d534-021f-44c8-a94f-p31ee0590a54'
+        data = {'resourceType': 'Bundle', 'type': 'collection', 'entry': [
+            {'fullUrl': 'urn:uuid:' + rid, 'resource': {'resourceType': 'Patient', 'id': rid,
+             'name': [{'text': 'Vikram Purohit'}]}},
+            {'resource': {'resourceType': 'Observation', 'status': 'final',
+             'subject': {'reference': 'urn:uuid:' + rid}, 'code': {'text': 'Hb'}}}]}
+        p = Processor(b'k'); p.observe('f', 'doc', data); p.finish()
+        cleaned, _ = p.clean('f', 'doc', data)
+        first = cleaned['entry'][0]
+        self.assertRegex(first['resource']['id'], r'^[A-Za-z0-9.-]{1,64}$')
+        self.assertNotEqual(first['resource']['id'], rid)
+        self.assertEqual(cleaned['entry'][1]['resource']['subject']['reference'], first['fullUrl'])
+        self.assertEqual(first['fullUrl'], 'urn:uuid:' + first['resource']['id'])
+
+    def test_bed_metadata_keeps_ward_but_removes_name(self):
+        from detector import detect_text
+        spans = detect_text('Ward 7 bed of Keshav', '__clinical__').spans
+        self.assertEqual([(s.text, s.entity_type) for s in spans], [('Keshav', 'PERSON')])
+
+    def test_missing_encounter_class_is_quarantined(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder) / 'input'
+            root.mkdir()
+            (root / 'bad.json').write_text(json.dumps({'resourceType': 'Bundle', 'type': 'collection',
+                'entry': [{'resource': {'resourceType': 'Encounter', 'status': 'finished'}}]}))
+            (root / 'good.txt').write_text('Dolo 650 BD x 5 days')
+            report = run(root, Path(folder) / 'out', Processor(b'k'), b'k')
+            self.assertEqual(report['counts']['files_quarantined'], 1)
+            self.assertEqual(report['counts']['files_sanitized'], 1)
+            self.assertFalse((Path(folder) / 'out/sanitized/bad.json').exists())
+
+    def test_homoglyph_name_keeps_identity_evidence(self):
+        p = Processor(b'k')
+        p.observe('f', 'row:0', {'Patient Name': 'Кamlа Rawat', 'Phone': '9123456780'})
+        names = p.linker.records[('f', 'row:0')].names
+        self.assertIn(L.name_tokens('Kamla Rawat'), names)
+        p.finish()
+        out, _ = p.clean('f', 'row:0', {'Patient Name': 'Кamlа Rawat', 'Phone': '9123456780'})
+        self.assertNotIn('Rawat', out['Patient Name'])
+
+    def test_compound_relative_label_redacts_entire_name(self):
+        p = Processor(b'k')
+        row = {'Patient Name': 'Vikram Purohit', 'Father / Husband': 'Keshav Purohit',
+               'Phone': '9123456780', 'Diagnosis': 'Dengue fever (A97.9)'}
+        p.observe('f', 'row:0', row)
+        p.finish()
+        out, _ = p.clean('f', 'row:0', row)
+        self.assertEqual(out['Father / Husband'], '[RELATIVE]')
+        self.assertEqual(out['Diagnosis'], row['Diagnosis'])
+
+    def test_same_named_guardian_is_retained_as_evidence(self):
+        p = Processor(b'k')
+        row = {'Patient Name': 'Vikram Purohit', 'Father / Husband': 'Vikram Purohit'}
+        p.observe('f', 'row:0', row)
+        self.assertIn(L.name_tokens('Vikram Purohit'), p.linker.records[('f', 'row:0')].relatives)
+
+    def test_shared_phone_names_but_different_guardians_conflict(self):
+        a = L.Evidence(names={L.name_tokens('Vikram Purohit')},
+                       relatives={L.name_tokens('Keshav Purohit')}, phones={'+919123456780'})
+        b = L.Evidence(names={L.name_tokens('Vikram Purohit')},
+                       relatives={L.name_tokens('Vikram Purohit')}, phones={'+919123456780'})
+        self.assertTrue(L.conflict(a, b))
+
+
 class RobustnessTests(unittest.TestCase):
     def test_every_yearless_month_is_shifted(self):
         for month in ('Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug',
@@ -414,7 +481,7 @@ class LetterheadTests(unittest.TestCase):
         p.finish()
         out, psn = p.clean('n', 'doc', 'Arogya Hospital, Tinypur\nPatient Name: Zorvan Takreli  Age: 97 Yrs/M\nUHID: ZZH/26/000123\n')
         self.assertIsNotNone(psn)
-        self.assertIn('Tinypur', out)              # districts are always kept (max_level 2)
+        self.assertNotIn('Tinypur', out)           # sparse patient: remove district from letterhead too
         self.assertIn('18+', out)                  # lone very old patient: adult-only age, still truthful
         self.assertNotIn(' 97 ', out)
 

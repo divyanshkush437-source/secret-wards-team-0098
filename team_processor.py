@@ -236,6 +236,7 @@ class Processor(DetectorAdapter):
         strong, weak = set(), set()
         strong_order = []
         name_parts = []
+        explicit_relatives = set()
         dates = []
         raw_dates = []
         order_votes = self.file_order.setdefault(file_id, Counter())
@@ -259,23 +260,23 @@ class Processor(DetectorAdapter):
                     order_votes[vote] += 1
             evidence.codes.update(ICD.findall(text) if hint == '__clinical__' or 'iagnos' in key or '(' in text else ())
             spans = self._detect(text, hint)
-            person_like = [s for s in spans if s.entity_type == 'PERSON' and s.confidence >= .85]
             strong_leaf = hint == 'patient name' 
             for span in spans:
                 kind = span.entity_type
+                person_like = kind == 'PERSON' and span.confidence >= .85
                 if kind in {'PERSON', 'RELATIVE'} and span.confidence >= .85 and len(span.text.strip()) >= 3 and loc is not None:
                     # Envelope "name" fields describe facilities, not people.
                     self.names.add(span.text.strip())
                 if kind in ('PERSON', 'RELATIVE'):
                     span = EntitySpan(span.start, span.end, kind, D.clean_view(span.text)[0], span.normalized, span.action, span.confidence)
-                if kind == 'PERSON' and span in person_like and (
+                if person_like and (
                         _RELATIVE_CONTEXT.search(text[max(0, span.start - 30):span.start].split('\n')[-1])
                         or _RELATIVE_AFTER.match(text[span.end:span.end + 25])
                         or _CHAT_SENDER.search(text[max(0, span.start - 40):span.start].split('\n')[-1])):
                     tokens = L.name_tokens(span.text)
                     if L.identifying(tokens):
                         evidence.relatives.add(tokens)
-                elif kind == 'PERSON' and span in person_like:
+                elif person_like:
                     tokens = L.name_tokens(span.text)
                     if L.identifying(tokens):
                         if strong_leaf and _NAME_PART_KEY.search(key or ''):
@@ -288,6 +289,8 @@ class Processor(DetectorAdapter):
                             weak.add(tokens)
                 elif kind == 'RELATIVE' and span.confidence >= .85:
                     tokens = L.name_tokens(span.text)
+                    if hint == 'relative':
+                        explicit_relatives.add(tokens)
                     if L.identifying(tokens):
                         evidence.relatives.add(tokens)
                 elif kind.startswith('ID_') or kind == 'EMAIL':
@@ -322,7 +325,7 @@ class Processor(DetectorAdapter):
         # outrank names found in narrative. Weak names that disagree with a
         # labelled name are other people (attendants, staff) and are ignored.
         # Several different *labelled* names -> we cannot tell whose record it is.
-        evidence.relatives = {r for r in evidence.relatives if not any(L.compare_names(r, n) == 'full' for n in strong)}
+        evidence.relatives = {r for r in evidence.relatives if r in explicit_relatives or not any(L.compare_names(r, n) == 'full' for n in strong)}
         if name_parts:
             joined = tuple(t for part in name_parts for t in part)
             strong.add(joined)
@@ -470,6 +473,28 @@ class Processor(DetectorAdapter):
             names = sorted(rare, key=lambda v: (-len(v), v))
             self.rare_dx_pattern = re.compile(r'(?<![\w\u0900-\u097f])(?:' + '|'.join(re.escape(v) for v in names) + r')(?![\w\u0900-\u097f])', re.I)
 
+    def _fhir_links(self, data):
+        """Remap resource IDs and their links together, before free-text detection."""
+        if not isinstance(data, dict) or 'resourceType' not in data:
+            return {}, {}
+        import uuid
+        nodes, stack = [], [data]
+        while stack:
+            node = stack.pop()
+            if isinstance(node, dict):
+                nodes.append(node)
+                stack.extend(node.values())
+            elif isinstance(node, list):
+                stack.extend(node)
+        ids = {n['id']: str(uuid.UUID(hex=P._mac(self.secret, 'fhir-resource\x00' + n['id']).hex()[:32]))
+               for n in nodes if isinstance(n.get('id'), str)}
+        urls = {}
+        for node in nodes:
+            resource = node.get('resource')
+            if isinstance(node.get('fullUrl'), str) and isinstance(resource, dict) and resource.get('id') in ids:
+                urls[node['fullUrl']] = 'urn:uuid:' + ids[resource['id']]
+        return ids, urls
+
     # ------------------------------------------------------------ clean
     def clean(self, file_id, loc, data):
         key = (file_id, loc)
@@ -478,7 +503,9 @@ class Processor(DetectorAdapter):
         subject = psn or 'rec\x00' + file_id + '\x00' + str(loc)
         sid = ('C', cid) if cid is not None else ('R', repr(key))
         votes = self.file_order.get(file_id, Counter())
+        fhir_ids, fhir_urls = self._fhir_links(data)
         self._ctx = {
+            'fhir_ids': fhir_ids, 'fhir_urls': fhir_urls,
             'psn': psn,
             'names': self.cluster_names.get(cid, set()),
             'ids': self.cluster_ids.get(cid, set()),
@@ -562,6 +589,22 @@ class Processor(DetectorAdapter):
         if self._ctx is not None and (isinstance(data, str) or (isinstance(data, (int, float)) and not isinstance(data, bool))):
             self._ctx['key'] = path[-1] if path else ''
             if isinstance(data, str):
+                if path and path[-1] in FHIR_ID_KEYS:
+                    ids, urls = self._ctx['fhir_ids'], self._ctx['fhir_urls']
+                    replacement = None
+                    if path[-1] == 'id' and data in ids:
+                        replacement = ids[data]
+                    elif data in urls:
+                        replacement = urls[data]
+                    elif path[-1] == 'reference':
+                        if data.startswith('#') and data[1:] in ids:
+                            replacement = '#' + ids[data[1:]]
+                        elif '/' in data and data.rsplit('/', 1)[1] in ids:
+                            prefix, rid = data.rsplit('/', 1)
+                            replacement = prefix + '/' + ids[rid]
+                    if replacement is not None:
+                        self.entities['METADATA'] += 1
+                        return replacement
                 if path and (_PATH_KEY.search(path[-1]) and re.search(r'[/\\]', data)):
                     self.entities['METADATA'] += 1
                     return '[SOURCE_PATH]'           # export/source paths often embed a user's name

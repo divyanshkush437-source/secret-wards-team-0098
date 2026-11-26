@@ -29,11 +29,11 @@ cell = ParagraphStyle('cell', parent=body, fontSize=10, leading=11.6, spaceAfter
 class Pipeline(Flowable):
     """Architecture diagram: ingestion -> detection -> linkage -> privacy -> export."""
     STAGES = [
-        ('1 Ingest', 'CSV/TSV/JSON/FHIR/TXT\nUTF-8, BOM, UTF-16, cp1252\nquarantine bad files'),
-        ('2 Detect', 'rules + context + gazetteer\nLatin / Devanagari /\nHinglish, medical shield'),
-        ('3 Link', 'transliterate, Jaro-Winkler,\nblocking, vetoes,\nconflict-safe clusters'),
-        ('4 Privacy', 'HMAC pseudonyms, per-\npatient date shift, bands,\nrare-dx coarsening'),
-        ('5 Export', 'sanitized/ mirror\nreport.json (SHA-256)\nrecords.jsonl'),
+        ('1 Ingest', 'Files in\nUTF-8/16\nQuarantine'),
+        ('2 Detect', 'Rules\n3 scripts\nClinical shield'),
+        ('3 Link', 'Transliterate\nMatch + veto\nCluster'),
+        ('4 Privacy', 'HMAC IDs\nDate shifts\nRisk bands'),
+        ('5 Export', 'Cleaned files\nAudit report\nRecord links'),
     ]
 
     def __init__(self, width):
@@ -56,7 +56,7 @@ class Pipeline(Flowable):
             c.setFont('Helvetica-Bold', 10)
             c.drawCentredString(x + w / 2, y + h - 5 * mm, title)
             c.setFillColor(INK)
-            c.setFont('Helvetica', 7.6)
+            c.setFont('Helvetica', 10)
             for j, line in enumerate(text.split('\n')):
                 c.drawCentredString(x + w / 2, y + h - 10 * mm - j * 3.4 * mm, line)
             if i < n - 1:
@@ -65,10 +65,9 @@ class Pipeline(Flowable):
                 c.line(ax, y + h / 2, ax + gap - 1.6 * mm, y + h / 2)
                 c.line(ax + gap - 3 * mm, y + h / 2 + 1.2 * mm, ax + gap - 1.6 * mm, y + h / 2)
                 c.line(ax + gap - 3 * mm, y + h / 2 - 1.2 * mm, ax + gap - 1.6 * mm, y + h / 2)
-        c.setFont('Helvetica-Oblique', 7.6)
+        c.setFont('Helvetica-Oblique', 10)
         c.setFillColor(INK)
-        c.drawString(0, 1.5 * mm, 'Two passes over the input: observe() collects evidence in RAM, finish() links patients, '
-                     'clean() rewrites each record. Nothing sensitive is logged or written to temp files.')
+        c.drawString(0, 1.5 * mm, 'Two passes: collect evidence in RAM, then clean and export.')
 
 
 def table(rows, widths, header=True):
@@ -118,29 +117,29 @@ def build():
          'compared with Jaro-Winkler. Blocking on IDs, phones and phonetic keys; Fellegi-Sunter style weights '
          '(ID 10, phone 5, full name 5, relative 4, DOB 4, village 2, age 1; threshold 7). Hard vetoes on gender, DOB, '
          'birth year and conflicting full names; a merge is refused if the <i>merged cluster</i> would conflict, which stops '
-         'transitive over-merging. A shared phone with a different name never links (families share phones).'],
+         'transitive over-merging. A shared phone does not justify linking conflicting identities.'],
         ['Pseudonyms', '<font face="Courier">PSN-</font> + 8 chars from HMAC-SHA256(RAKSHA_SECRET, cluster evidence). '
          'Stable for a release, different under another secret, not invertible by hash dictionaries, never embeds UHID '
          'or phone digits. The pseudonym replaces the patient\'s name and reference IDs inside the record.'],
     ], [24 * mm, W - 24 * mm]))
     s.append(P('4. USP', h2))
     s.append(P('&bull; <b>Cross-script identity</b>: one patient in Latin, Devanagari and Hinglish gets one pseudonym '
-               '(language-trap patients: 100% of pairs linked). &bull; <b>Precision first</b>: 0 false merges on practice '
-               'data, both homonym pairs kept apart. &bull; <b>Patient-aware redaction</b>: once linked, spelling '
+               '(validated on synthetic multilingual records). &bull; <b>Precision first</b>: conflicting guardian '
+               'evidence prevents household-phone merges. &bull; <b>Patient-aware redaction</b>: once linked, spelling '
                'variants of that patient\'s name (Zenab/Zainab) are removed even where the context detector missed them. '
                '&bull; <b>Risk-targeted generalisation</b> instead of blanket deletion.'))
     s.append(PageBreak())
 
-    s.append(P('5. Privacy-utility trade-off (measured on the practice kit)', h2))
+    s.append(P('5. Privacy-utility trade-off (27 November evaluation)', h2))
     s.append(table([
         ['Quasi-identifier', 'What we release', 'Why / cost'],
         ['Dates', 'Shifted by a secret per-patient offset of &plusmn;20-200 days (unlinked records: per-record)',
-         'Defeats global-shift recovery; all 22 admission/discharge intervals kept exactly'],
+         'Offsets vary by patient; all 452 intervals kept on the final three test sets'],
         ['Age', '10-year band (47 &rarr; 40-49); 20-year, then adult/minor only (18+ / 0-17) when the patient\'s cell is sparse',
-         'Bands always contain the true age. Age is widened instead of removing the district, so every clinical value survives'],
+         'Bands contain the true age. Widen age first; suppress district only if the estimated group remains too small'],
         ['DOB', 'Birth-decade band in text/CSV; shifted date in FHIR birthDate (stays valid R4)',
-         'Exact DOB never survives'],
-        ['Village, house, locality', 'Removed; district always kept (config max_level 3 also drops it for the rarest patients)',
+         'DOB handled as a quasi-identifier'],
+        ['Village, house, locality', 'Removed; district also removed for sparse patients (default max_level 3)',
          'Cell = 4 x patients(district) x share(gender) x share(band) must reach 5 people, else the age is widened'],
         ['PIN', '3-digit prefix (226XXX); removed at higher risk', 'Sorting-district granularity only'],
         ['Rare diagnosis', 'Name and ICD code kept exactly; age released only as adult/minor if &lt; 3 patients share the code',
@@ -148,33 +147,32 @@ def build():
     ], [30 * mm, 78 * mm, W - 108 * mm]))
     s.append(Spacer(1, 3))
     s.append(table([
-        ['Measure (practice data, 200 files)', 'Result'],
-        ['Files sanitized / quarantined / records', '193 / 7 / 822 records, 775 linked'],
-        ['Linkage pairwise precision / recall / F0.5', '1.000 / 1.000 / 1.000 (6,892 linkable pairs); homonyms 2/2 separated; all trap patients 100%'],
-        ['Two generated hidden-style sets (496 files, 270 new patients, 4 new hospital formats)', 'personal data 0 / 8,253 visible, canaries 0 / 8, linkage 1.000 / 1.000, homonyms 6 / 6, stay lengths 246 / 246, contract OK'],
-        ['Kit self-check rules (check_dev.py, exact text per entity)', '0 / 3,230 personal-data pieces visible: names, relatives, DOB, PIN, Aadhaar, ABHA, PAN, phone, email, UHID, house, village; '
-         'all scripts (Latin, Devanagari, Hinglish) and hiding places (file names, headers, keys, metadata, base64); canaries 0 / 4; raw copies 0'],
-        ['Clinical probes kept', '100% on all four test sets (4,855 / 4,855 practice; 2,563 / 2,563 and 2,932 / 2,932 hidden)'],
-        ['Registry attack (district, gender, band, PIN prefix)', '0 single records on all 4 sets; pooled profiles 1 / 48 practice, 2 / 125 and 0 / 159 hidden (raw hidden: 60 and 80)'],
-        ['Targeted attack (known visit date, hospital, condition, stay)', 'practice 6 / 14, hidden 18 / 36 and 24 / 45 (raw 2, 6, 12); global date shift never recoverable'],
-        ['Determinism / other secret', 'byte-identical sanitized/ and records.jsonl; 0 pseudonyms shared across secrets'],
-        ['Speed and memory', '2.3-4.7 s, 33-36 MB per set; 6x practice data: 1,200 files in 45 s, 150 MB peak; 180 tests'],
+        ['Measure (three synthetic regression sets)', 'Final result'],
+        ['Dataset seeds', '2117101, 2117102, 2117103; 120 requested patients each. Rerun after an ID-format fix'],
+        ['Practice composite / 100', '96.65, 94.21, 97.28 (mean 96.05). This is not universal accuracy or the official hidden score'],
+        ['Weighted leak matches', '1, 5, 0; zero planted canaries on all three sets'],
+        ['Patient linking precision / recall', '100% / 100%; 100% / 99.646%; 100% / 100%'],
+        ['Clinical preservation probes', '3906 / 3920; 3674 / 3689; 3608 / 3620. Lost values are districts'],
+        ['Admission / discharge intervals', '157 / 157; 149 / 149; 146 / 146. No unshifted date surfaces flagged'],
+        ['Targeted known-person identifications', '7 / 36; 13 / 36; 7 / 36. Residual re-identification risk remains'],
+        ['Validation', '196 unit tests; official submission checks pass; 106/106 output bundles pass independent FHIR resource-model checks'],
+        ['Limits', 'Not a complete runtime FHIR profile validator. Tested generators are synthetic and team-authored; no learned model'],
     ], [62 * mm, W - 62 * mm]))
     s.append(P('6. Security design', h2))
     s.append(P('All evidence stays in process memory; no intermediate files are written (the only staging directory '
-               'is inside the output folder and is renamed into place only on success, so a crash publishes nothing). '
+               'is inside the output folder; the completion report is published last). '
                'RAKSHA_SECRET is read from the environment, used only as an HMAC key and never printed or written. '
                'report.json is identified by SHA-256 only and holds aggregate counts. Errors produce fixed messages with '
                'no exception payloads. Failed files are quarantined by status only; they are never copied. '
-               'If disk staging is ever needed, the plan is AES-GCM with a key derived from the secret (cryptography).'))
+               'Raw input is not encrypted by this pipeline. Encrypted source storage and backups are deployment responsibilities.'))
     s.append(P('7. Known limitations', h2))
-    s.append(P('&bull; Practice data has only ~50 patients; the registry size is estimated (4x patients), and our attack is an '
-               'approximation of the organisers\' attacker (it ignores names, which we remove). &bull; Rare-diagnosis protection coarsens '
-               'demographics; the diagnosis itself plus exact stay length can still single out a patient for an attacker '
-               'who already knows both: our targeted attack finds about half of the known people (raw: 1 in 6 to 1 in 4), because exact stay '
-               'lengths, which the rules require us to keep, plus demographics single them out. Hidden-style sets were generated by us, not the organisers. &bull; Context rules can still miss names in unseen label styles; free-text village names without '
-               'markers may survive. &bull; Scaling on duplicated data grew faster than linear (6x data, ~10x time) '
-               'because large blocks share identifiers. &bull; No ML model is used; all rules were written during the event.', small))
+    s.append(P('The practice scorer approximates the official scoring rules; its total is not universal accuracy. '
+               'Synthetic sets share a generator and do not establish performance on arbitrary real data. '
+               'Keeping exact conditions, stay lengths and demographics leaves re-identification risk. '
+               'District suppression improves privacy but loses geographic utility; max_level 2 restores the earlier district-preserving policy. '
+               'Ambiguous date order and yearless dates require assumptions. Unsupported inputs are quarantined. '
+               'All results, keys for synthetic reproduction, and limitations are recorded in docs/privacy-tuning-2026-11-27. '
+               'No ML model is used; this is rule and policy tuning.', small))
     doc.build(s)
     return OUT
 

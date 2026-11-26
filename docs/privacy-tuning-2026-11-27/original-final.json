@@ -1,0 +1,409 @@
+{
+ "total": 97.84404219163876,
+ "detection": {
+  "recall": 1.0,
+  "leaked_total": 0.0,
+  "mentions": 5760,
+  "by_type": {
+   "AADHAAR": [
+    0.0,
+    124
+   ],
+   "ABHA_ADDRESS": [
+    0.0,
+    48
+   ],
+   "ABHA_NUMBER": [
+    0.0,
+    83
+   ],
+   "DOB": [
+    0.0,
+    261
+   ],
+   "EMAIL": [
+    0.0,
+    4
+   ],
+   "HOUSE": [
+    0.0,
+    285
+   ],
+   "INSURANCE_ID": [
+    0.0,
+    157
+   ],
+   "LANDMARK": [
+    0.0,
+    48
+   ],
+   "LOCALITY": [
+    0.0,
+    83
+   ],
+   "MRN": [
+    0.0,
+    887
+   ],
+   "PAN": [
+    0.0,
+    170
+   ],
+   "PATIENT_NAME": [
+    0.0,
+    1316
+   ],
+   "PHONE": [
+    0.0,
+    658
+   ],
+   "PIN": [
+    0.0,
+    316
+   ],
+   "PMJAY_ID": [
+    0.0,
+    122
+   ],
+   "RELATIVE_NAME": [
+    0.0,
+    797
+   ],
+   "STAFF_NAME": [
+    0.0,
+    2
+   ],
+   "VILLAGE": [
+    0.0,
+    351
+   ],
+   "VOTER_ID": [
+    0.0,
+    48
+   ]
+  },
+  "by_script": {
+   "deva": [
+    0.0,
+    353
+   ],
+   "hinglish": [
+    0.0,
+    268
+   ],
+   "latin": [
+    0.0,
+    5139
+   ]
+  },
+  "by_channel": {
+   "annotation": [
+    0.0,
+    35
+   ],
+   "attachment_title": [
+    0.0,
+    35
+   ],
+   "base64": [
+    0.0,
+    105
+   ],
+   "contained": [
+    0.0,
+    70
+   ],
+   "content": [
+    0.0,
+    5142
+   ],
+   "extension": [
+    0.0,
+    35
+   ],
+   "filename": [
+    0.0,
+    53
+   ],
+   "formula": [
+    0.0,
+    21
+   ],
+   "identifier_system": [
+    0.0,
+    35
+   ],
+   "metadata": [
+    0.0,
+    72
+   ],
+   "modifier_extension": [
+    0.0,
+    35
+   ],
+   "narrative": [
+    0.0,
+    70
+   ],
+   "percent": [
+    0.0,
+    21
+   ],
+   "unicode_escape": [
+    0.0,
+    31
+   ]
+  },
+  "by_obfuscation": {
+   "base64": [
+    0.0,
+    70
+   ],
+   "data_uri": [
+    0.0,
+    35
+   ],
+   "devanagari_digits": [
+    0.0,
+    109
+   ],
+   "fullwidth_at": [
+    0.0,
+    2
+   ],
+   "fullwidth_digits": [
+    0.0,
+    10
+   ],
+   "homoglyph": [
+    0.0,
+    14
+   ],
+   "html_entities": [
+    0.0,
+    21
+   ],
+   "json_number": [
+    0.0,
+    44
+   ],
+   "json_u_escape": [
+    0.0,
+    31
+   ],
+   "line_break": [
+    0.0,
+    10
+   ],
+   "number_words_hindi": [
+    0.0,
+    12
+   ],
+   "number_words_hinglish": [
+    0.0,
+    14
+   ],
+   "percent_encoding": [
+    0.0,
+    21
+   ],
+   "soft_hyphen_zwnj": [
+    0.0,
+    8
+   ],
+   "spaced_digits": [
+    0.0,
+    6
+   ],
+   "zero_width": [
+    0.0,
+    37
+   ]
+  },
+  "direct_unique_leaks": 0
+ },
+ "utility": {
+  "probes_kept": 3768,
+  "probes": 3794,
+  "lost_by_kind": {
+   "district": 26
+  },
+  "contextual_precision": 1.0,
+  "by_trap": {
+   "1-0-1": [
+    109,
+    109
+   ],
+   "aadhaar-lookalike": [
+    1,
+    1
+   ],
+   "abha-lookalike": [
+    1,
+    1
+   ],
+   "asha": [
+    101,
+    101
+   ],
+   "c/o-complaint": [
+    121,
+    121
+   ],
+   "doctor": [
+    303,
+    303
+   ],
+   "doctor-vs-relative": [
+    56,
+    56
+   ],
+   "dose": [
+    113,
+    113
+   ],
+   "eponym": [
+    26,
+    26
+   ],
+   "h/o": [
+    100,
+    100
+   ],
+   "hospital-ward": [
+    101,
+    101
+   ],
+   "k/c/o": [
+    100,
+    100
+   ],
+   "lakh": [
+    1,
+    1
+   ],
+   "pin-lookalike": [
+    183,
+    183
+   ],
+   "voterid-lookalike": [
+    1,
+    1
+   ]
+  }
+ },
+ "dates": {
+  "intervals_kept": 157,
+  "intervals": 157,
+  "dates_left_unshifted": 0,
+  "dates_checked": 923
+ },
+ "linkage": {
+  "precision": 1.0,
+  "recall": 1.0,
+  "f05": 1.0,
+  "b3f1": 1.0,
+  "pseudonym_consistency": [
+   772,
+   772
+  ],
+  "traps": {
+   "homonyms_separated": [
+    3,
+    3
+   ],
+   "twins_separated": [
+    1,
+    1
+   ],
+   "father_son_separated": [
+    1,
+    1
+   ],
+   "shared_phone_family_separated": [
+    1,
+    1
+   ],
+   "newborn_twins_separated": [
+    1,
+    1
+   ],
+   "cross_script_linked": [
+    215,
+    215
+   ],
+   "fragmented_linked": [
+    180,
+    180
+   ],
+   "spelling_variants_linked": [
+    894,
+    894
+   ],
+   "married_name_change_linked": [
+    55,
+    55
+   ]
+  },
+  "trap_score": 1.0,
+  "linkable_pairs": 2420,
+  "predicted_pairs": 2503
+ },
+ "canaries_found": [],
+ "attack": {
+  "record_mean_risk": 0.017491837948511425,
+  "records_identified": 1,
+  "records": 773,
+  "profile_identified": 1,
+  "profiles": 125,
+  "profile_mean_risk": 0.05249931286915812,
+  "direct_exposure": 0.00129366106080207,
+  "targeted": {
+   "known_people": 36,
+   "mean_success": 0.1960455624937722,
+   "identified": 5,
+   "decoys_claimed": 10
+  }
+ },
+ "raw_attack": {
+  "record_mean_risk": 0.5934647721560049,
+  "records_identified": 503,
+  "records": 773,
+  "profile_identified": 83,
+  "profiles": 122,
+  "profile_mean_risk": 0.6762295081967213,
+  "direct_exposure": 0.46183699870633893,
+  "targeted": {
+   "known_people": 36,
+   "mean_success": 0.5247636126621633,
+   "identified": 19,
+   "decoys_claimed": 4
+  }
+ },
+ "integrity": {
+  "silent_drops": 0,
+  "raw_copies": 0,
+  "bad_format_files": 0,
+  "exported_files": 241,
+  "quarantine_handled": [
+   12,
+   12
+  ],
+  "report_honest": [
+   true,
+   true
+  ],
+  "report_present": true,
+  "timing": 9.3154,
+  "peak_rss_mb": 32.59
+ },
+ "scores": {
+  "detection": 1.0,
+  "identity": 1.0,
+  "privacy": 0.9167769749612809,
+  "utility": 0.9962308908803374,
+  "integrity": 1.0,
+  "efficiency": 1.0,
+  "penalties": 0
+ }
+}

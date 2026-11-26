@@ -1,11 +1,10 @@
 # Member 3: linkage, pseudonyms, privacy layer and red-team
 
-Current continuation: [27 November evaluation](docs/evaluation-2026-11-27/README.md).
-The tables and policy experiments below are historical, not current acceptance results.
-The current default keeps districts and disease names (`max_level: 2`,
-`rare_name_max_patients: 0`); historical descriptions of removal below apply to earlier
-experiments. Consult `config/privacy.json` and the latest evaluation for current behavior.
-
+Current results: [privacy tuning and evaluation](docs/privacy-tuning-2026-11-27/README.md).
+Compliance evidence and remaining gaps: [guideline audit](docs/privacy-tuning-2026-11-27/GUIDELINES.md).
+The tables and experiments below are historical. The current default uses `max_level: 3`
+(sparse-patient district suppression) and `rare_name_max_patients: 0` (disease names kept).
+No universal accuracy, zero-leak or complete anonymity claim is supported.
 
 | File | Role |
 |---|---|

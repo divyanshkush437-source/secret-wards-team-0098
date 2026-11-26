@@ -29,7 +29,7 @@ DEFAULTS = {
     'k_threshold': 3,                   # min patients sharing a diagnosis code
     'registry_ratio': 4,                # attacker registry size / patient count (kit: 4-5x)
     'k_registry': 5,                    # min expected registry people per released cell
-    'max_level': 2,                     # 2 = never remove the district (100% medical values); 3 = stricter privacy
+    'max_level': 3,                     # remove district only when age widening cannot reach the risk target
     'adult_age': 18,                    # level 2+: age released only as "18+" / "0-17"
     'rare_name_max_patients': 0,        # 0 = never rename diseases (names kept; demographics widened instead)
     'pin_prefix_digits': 3,             # PIN 226001 -> 226XXX at level 0

@@ -1,0 +1,44 @@
+{
+  "1117101-input": {
+    "valid": 0,
+    "invalid": 35,
+    "errors": {
+      "('entry', 3, 'resource', 'class'): value_error.missing": 35
+    }
+  },
+  "1117101-output": {
+    "valid": 0,
+    "invalid": 35,
+    "errors": {
+      "('entry', 3, 'resource', 'class'): value_error.missing": 35
+    }
+  },
+  "1117102-input": {
+    "valid": 0,
+    "invalid": 42,
+    "errors": {
+      "('entry', 3, 'resource', 'class'): value_error.missing": 42
+    }
+  },
+  "1117102-output": {
+    "valid": 0,
+    "invalid": 42,
+    "errors": {
+      "('entry', 3, 'resource', 'class'): value_error.missing": 42
+    }
+  },
+  "1117103-input": {
+    "valid": 0,
+    "invalid": 37,
+    "errors": {
+      "('entry', 3, 'resource', 'class'): value_error.missing": 37
+    }
+  },
+  "1117103-output": {
+    "valid": 0,
+    "invalid": 37,
+    "errors": {
+      "('entry', 3, 'resource', 'class'): value_error.missing": 37
+    }
+  }
+}
