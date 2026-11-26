@@ -3,3 +3,7 @@ __pycache__/
 .venv/
 my_output*/
 dev/input/
+data/
+training_out/
+*.model
+hardest_data/
