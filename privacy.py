@@ -28,7 +28,8 @@ DEFAULTS = {
     'age_top_code': 85,                 # ages >= this become "85+"
     'k_threshold': 3,                   # min patients sharing a diagnosis code
     'registry_ratio': 4,                # attacker registry size / patient count (kit: 4-5x)
-    'k_registry': 5,                    # min expected registry people per released cell
+    'k_registry': 8,                    # min expected registry people per released cell
+    'old_top_code': 65,                 # wider top code for very old patients who stay rare
     'rare_name_max_patients': 1,        # disease names held by <= this many patients are generalised
     'pin_prefix_digits': 3,             # PIN 226001 -> 226XXX at level 0
 }
@@ -138,7 +139,7 @@ def shift_text_date(raw: str, days: int, order: str = 'DMY'):
     value, layout = parse_numeric(raw, order)
     if value is not None:
         return render_numeric(value + timedelta(days=days), layout)
-    m = re.fullmatch(r'(\d{1,2})(\s+)([A-Za-z]+)(\s+)(\d{4})', raw)
+    m = re.fullmatch(r'(\d{1,2})(\s+|-)([A-Za-z]+)(\s+|-)(\d{4})', raw)
     if m and m[3][:3].lower() in _MONTHS:
         value = _safe(int(m[5]), _MONTHS.index(m[3][:3].lower()) + 1, int(m[1]))
         if value is None:
@@ -154,6 +155,8 @@ def shift_text_date(raw: str, days: int, order: str = 'DMY'):
 def age_band(age: int, level: int = 0, config: dict = DEFAULTS) -> str:
     """Truthful band containing the real age: 47 -> '45-49', 91 -> '85+'."""
     top = config['age_top_code']
+    if level >= 3 and age >= config.get('old_top_code', 65):
+        return f"{config.get('old_top_code', 65)}+"     # very old and still rare: wider top code
     if age >= top:
         return f'{top}+'
     width = config['age_band_width'][min(level, len(config['age_band_width']) - 1)]
@@ -163,6 +166,9 @@ def age_band(age: int, level: int = 0, config: dict = DEFAULTS) -> str:
 
 
 def birth_year_band(year: int, level: int = 0, config: dict = DEFAULTS) -> str:
+    cut = 2026 - config.get('old_top_code', 65)
+    if level >= 3 and year <= cut:
+        return f'{cut} or earlier'
     width = config['age_band_width'][min(level, len(config['age_band_width']) - 1)]
     low = year // width * width
     return f'{low}-{low + width - 1}'
@@ -240,6 +246,14 @@ def risk_levels(subjects: dict, config: dict = DEFAULTS) -> dict:
             levels[sid] = 2
             continue
         levels[sid] = next((lv for lv in (0, 1) if expected(info, lv) >= k_reg), 2)
+        age = first_age(info)
+        if levels[sid] == 2 and age is not None and age >= config['age_top_code']:
+            # "85+" with no district can still be one or two people: widen to "65+".
+            old = config.get('old_top_code', 65)
+            g = info.get('gender')
+            share_g = gender_n.get(g, 0) / total if g else 1.0
+            if ratio * total * share_g * band_n[1].get(age_band(age, 1, config), 0) / max(aged, 1) < k_reg:
+                levels[sid] = 3
     return levels
 
 

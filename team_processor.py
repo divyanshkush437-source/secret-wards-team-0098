@@ -12,6 +12,7 @@ from detector import detect_text
 from detector import patterns as p
 from detector.engine import _date_kind
 from detector.schema import EntitySpan
+from detector.medical_whitelist import blocked_word
 from detector.context_rules import resolve, overlaps
 from member2_processor import Processor as DetectorAdapter, DIRECT
 import linker as L
@@ -44,6 +45,11 @@ _DOCTOR_KEY = re.compile(r'doctor|dr|consultant|physician|referred|ref|author|pr
 _RELATIVE_CONTEXT = re.compile(r"(?i)(?:pita|pati|father|mother|husband|wife|spouse|guardian|relative|attendant|kin|पिता|पति|पत्नी|माता|अभिभावक)(?:['’]s)?\W*(?:ka|ki|का|की)?\s*(?:naam|name|नाम)?\s*[:=-]?\s*$")
 
 
+_CHAT_SENDER = re.compile(r"\]\s*-?\s*$")      # "[11/09/26, 8:13 pm] Ajay Bhaiya:" is the sender, not the patient
+_RELATIVE_AFTER = re.compile(r"(?i)\s*[(,-]\s*(?:attendant|relative|visitor|guardian|husband|wife|father|mother|son|daughter|brother|sister|bhai|pati|patni)\b")
+_NAME_IN_KEY = re.compile(r"(?i:\b(?:by|for|of|to|from|attendant|relative|patient|pt|name|naam|re)\b)[\s:_-]+([A-Z][a-z]+(?:[\s_]+[A-Z][a-z]+)+)")
+
+
 def romanised_hint(key):
     """Recognise unseen/romanised labels ("Naam", "Umar", "Janm Tithi")."""
     compact = re.sub(r'[^a-z\u0900-\u097f]', '', L.transliterate(key).casefold())
@@ -63,9 +69,9 @@ def romanised_hint(key):
         return '__district__'
     if re.search(r'locality|landmark|colony|residence|resident|addr|basti|mohalla|street|housename|houseno|town|tehsil|taluk|block|panchayat', compact):
         return 'address'
-    if re.search(r'village|gaon|gram', compact):
+    if re.search(r'village|gaon|gaanv|gaanw|gram', compact):
         return 'address'
-    if re.search(r'pincode|postal|zip', compact):
+    if re.search(r'pincode|postal|zip', compact) or re.fullmatch(r'pin(code|kod|kd|no|number)?', compact):
         return 'pincode'
     if re.search(r'^(sex|gender|ling)', compact):
         return 'gender'
@@ -131,6 +137,11 @@ class Processor(DetectorAdapter):
         return hint
 
     def _key(self, key):
+        # A name written into a header or key after a context word
+        # ("verified by Zephro Anaktal", "note for Velmar Ostridge") is personal data.
+        m = _NAME_IN_KEY.search(key)
+        if m and not any(blocked_word(t) for t in re.split(r'[\s_]+', m[1])):
+            return self._key_token(key)
         # Recognised schema labels ("District", "Naam", "Patient Name") are not
         # personal data; only rename them if they hold a strong identifier.
         from detector.field_hints import canonical_hint
@@ -174,7 +185,10 @@ class Processor(DetectorAdapter):
                 if kind in {'PERSON', 'RELATIVE'} and span.confidence >= .85 and len(span.text.strip()) >= 3 and loc is not None:
                     # Envelope "name" fields describe facilities, not people.
                     self.names.add(span.text.strip())
-                if kind == 'PERSON' and span in person_like and _RELATIVE_CONTEXT.search(text[max(0, span.start - 30):span.start].split('\n')[-1]):
+                if kind == 'PERSON' and span in person_like and (
+                        _RELATIVE_CONTEXT.search(text[max(0, span.start - 30):span.start].split('\n')[-1])
+                        or _RELATIVE_AFTER.match(text[span.end:span.end + 25])
+                        or _CHAT_SENDER.search(text[max(0, span.start - 40):span.start].split('\n')[-1])):
                     tokens = L.name_tokens(span.text)
                     if L.identifying(tokens):
                         evidence.relatives.add(tokens)
@@ -207,6 +221,7 @@ class Processor(DetectorAdapter):
                     dates.append(span.normalized)
                 elif kind == 'LOCATION':
                     self._places(evidence, span.text)
+                    evidence.loc_texts = getattr(evidence, 'loc_texts', []) + [span.text]
             if VILLAGE_KEYS.search(key) and hint != '__district__':
                 self._places(evidence, stripped)
         self._collect_diagnoses(data)
@@ -314,6 +329,13 @@ class Processor(DetectorAdapter):
                 info['gender'] = sorted(ev.genders)[0]
             if ev.districts and info['district'] is None:
                 info['district'] = sorted(ev.districts)[0]
+            if info['district'] is None and self.district_pattern is not None:
+                # District written only in a free-text address ("Dist. Pratapgarh").
+                for t in getattr(ev, 'loc_texts', []):
+                    m = self.district_pattern.search(t)
+                    if m:
+                        info['district'] = m[0].casefold()
+                        break
         self.levels = P.risk_levels(subjects, self.config)
         # Disease names held by very few patients point straight at one profile
         # for an attacker who knows the condition. Keep the exact ICD code (for

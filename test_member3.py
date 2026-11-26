@@ -163,7 +163,7 @@ class PrivacyTests(unittest.TestCase):
         levels = P.risk_levels(subjects)
         self.assertEqual(levels[0], 0)
         self.assertEqual(levels['lonely'], 2)      # district would single her out
-        self.assertEqual(levels['old'], 2)         # 85+ is rare in any district
+        self.assertEqual(levels['old'], 3)         # a lone 85+ patient is widened to "65+"
 
     def test_expected_registry_cell_reaches_k(self):
         subjects = {i: {'codes': set(), 'ages': {20 + i}, 'gender': 'F', 'district': 'd%d' % (i % 3)} for i in range(60)}
@@ -262,6 +262,73 @@ class UnseenLabelTests(unittest.TestCase):
         self.assertEqual([x.text for x in spans], ['Mahesh Chauhan', 'Naresh Chauhan'])
 
 
+class HiddenFormatTests(unittest.TestCase):
+    """Formats found by the hidden-style test sets (tools/make_hidden_dataset.py)."""
+
+    def spans(self, text, hint=''):
+        from detector import detect_text
+        return [(x.entity_type, x.text) for x in detect_text(text, hint).spans]
+
+    def test_plain_hospital_number(self):
+        self.assertEqual(self.spans('IP No.: AGH0001081'), [('ID_UHID', 'AGH0001081')])
+        self.assertEqual(self.spans('ICD A01.0, LOINC 718-7, package MG001A, SpO2 96%'), [])
+
+    def test_month_name_dates(self):
+        self.assertEqual(self.spans('DOB: 03-Mar-1928'), [('DOB', '03-Mar-1928')])
+        self.assertEqual(P.shift_text_date('07-Sep-2026', 10), '17-Sep-2026')
+
+    def test_bracket_phone(self):
+        self.assertEqual(self.spans('Contact: (73036) 71330'), [('PHONE', '(73036) 71330')])
+
+    def test_hindi_pin_and_village_headers(self):
+        from team_processor import romanised_hint as h
+        self.assertEqual(h('पिन कोड'), 'pincode')
+        self.assertEqual(h('गाँव'), 'address')
+
+    def test_name_inside_header_or_key(self):
+        p = Processor(b'k')
+        p.finish()
+        self.assertTrue(p._key('verified by Zephro Anaktal').startswith('field_'))
+        self.assertTrue(p._key('note for Velmar Ostridge').startswith('field_'))
+        for label in ('Patient Full Name', 'Date Of Birth', 'Father-Husband', 'Referred By Doctor'):
+            self.assertEqual(p._key(label), label)
+
+    def test_meta_plus_records_json(self):
+        from io_handler import parse
+        doc = parse(b'{"meta": {"system": "x"}, "records": [{"a": 1}, {"a": 2}]}', '.json')
+        self.assertEqual([loc for loc, _ in doc.records], ['/records/0', '/records/1'])
+        doc = parse(b'{"lab": "x", "patient": {"name": "y"}, "panels": [{"a": 1}, {"a": 2}]}', '.json')
+        self.assertEqual([loc for loc, _ in doc.records], ['doc'])
+
+    def test_ambiguous_fragment_links_to_nobody(self):
+        linker = L.Linker()
+        mk = lambda **kw: ev(**kw)
+        linker.add('a', mk(names=['Durga Dubey'], relatives=['Shivendra Dubey'], ids=[('UHID', 'A1234567')]))
+        linker.add('b', mk(names=['Durga Rawat'], relatives=['Shivendra Rawat'], ids=[('UHID', 'B7654321')]))
+        linker.add('note', mk(names=['Durga'], relatives=['Shivendra']))
+        out = linker.resolve()
+        self.assertNotIn(out['note'], (out['a'], out['b']))
+
+    def test_unique_fragment_still_links(self):
+        linker = L.Linker()
+        linker.add('a', ev(names=['Durga Dubey'], relatives=['Shivendra Dubey'], ids=[('UHID', 'A1234567')]))
+        linker.add('note', ev(names=['Durga'], relatives=['Shivendra']))
+        out = linker.resolve()
+        self.assertEqual(out['note'], out['a'])
+
+    def test_real_name_not_generic_particle(self):
+        self.assertFalse(L.is_generic('chanda'))
+        self.assertTrue(L.is_generic('baano'))
+
+    def test_retroflex_place_names(self):
+        self.assertEqual(L.place_key(L.name_tokens('शिवगढ़')[0]), L.place_key('shivgarh'))
+
+    def test_chat_sender_is_not_patient(self):
+        p = Processor(b'k')
+        p.observe('f', 'doc', '[11/09/26, 8:13 pm] Ajay Bhaiya: report\nReport of Reena behenji 65 Y / F\ncall 7560010034')
+        self.assertEqual(p.linker.records[('f', 'doc')].names, {L.name_tokens('Reena')})
+
+
 class LetterheadTests(unittest.TestCase):
     def test_high_risk_letterhead_district_masked(self):
         p = Processor(b'k')
@@ -271,7 +338,7 @@ class LetterheadTests(unittest.TestCase):
         out, psn = p.clean('n', 'doc', 'Arogya Hospital, Tinypur\nPatient Name: Zorvan Takreli  Age: 97 Yrs/M\nUHID: ZZH/26/000123\n')
         self.assertIsNotNone(psn)
         self.assertNotIn('Tinypur', out)
-        self.assertIn('85+', out)
+        self.assertIn('65+', out)                  # lone very old patient: wider top code, still truthful
 
 
 class EndToEndTests(unittest.TestCase):

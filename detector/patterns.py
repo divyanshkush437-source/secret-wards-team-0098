@@ -10,9 +10,10 @@ EMAIL = re.compile(r'(?<![\w.+-])[\w.+-]+@[\w-]+(?:\.[\w-]+)+', re.UNICODE)
 PAN = re.compile(r'(?<!\w)[A-Z]{5}[0-9]{4}[A-Z](?!\w)')
 AADHAAR = re.compile(r'(?<![\w\d])\d{4}[ -]?\d{4}[ -]?\d{4}(?![\w\d])')
 ABHA = re.compile(r'(?<![\w\d])\d{2}[ -]?\d{4}[ -]?\d{4}[ -]?\d{4}(?![\w\d])')
-PHONE = re.compile(r'(?<!\w)(?:(?:\+91[ .-]?|0)?[6-9६-९]\d{4}[ .-]?\d{5}|\(0\d{2,4}\)[ .-]?\d{6,8}|0\d{2,4}-\d{6,8})(?!\w)')
+PHONE = re.compile(r'(?<!\w)(?:(?:\+91[ .-]?|0)?[6-9६-९]\d{4}[ .-]?\d{5}|\(0\d{2,4}\)[ .-]?\d{6,8}|0\d{2,4}-\d{6,8})(?!\w)'
+                   r'|\(\s*(?:\+?91[ -]?)?[6-9]\d{4}\s*\)[ .-]?\d{5}(?!\w)')   # "(73036) 71330"
 NUM_DATE = re.compile(r'(?<![\w/.-])(?:\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[-/]\d{1,2}[-/](?:\d{4}|\d{2})|\d{1,2}\.\d{1,2}\.\d{4}|\d{4}\.\d{1,2}\.\d{1,2})(?![\w/-]|\.\d)')
-TEXT_DATE = re.compile(r'(?<!\w)\d{1,2}\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{4}(?!\w)', re.I)
+TEXT_DATE = re.compile(r'(?<!\w)\d{1,2}(?:\s+|-)(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)(?:\s+|-)\d{4}(?!\w)', re.I)
 ID_LABEL = re.compile(r'\b(?:UHID|MRN|IPD|OPD|Reg(?:istration)?\s*(?:No\.?)?|Insurance(?:\s*(?:ID|No\.?))?|Policy\s*(?:ID|No\.?))\s*[:=#-]?\s*([A-Za-z0-9][A-Za-z0-9/-]{1,39})\b', re.I)
 PIN = re.compile(r'(?<!\d)[1-9]\d{5}(?!\d)')
 AGE = re.compile(r'(?i)(?:\b(?:age|उम्र|आयु)\s*[:=-]?\s*(?P<label>\d{1,3})(?!\d)|(?<![\w.])(?P<years>\d{1,3})\s*(?:yrs?\b|years?\b|वर्ष)|(?<![\w.])(?P<compact>\d{1,3})(?=\s*/?\s*[MF]\b))')
@@ -55,6 +56,9 @@ def normalize_date(value, pivot=30, order="DMY"):
         return None
 
 STRUCTURED_ID = re.compile(r'(?i)(?<![\w])(?:[a-z]{2,8}[-/](?:[a-z]{2,5}[-/])?(?:\d{2,4}[-/])?\d{5,}|(?:uhid|mrn|adm)\d{5,}|(?:pmjay|pol)[-/][a-z0-9/-]{5,})(?![\w])')
+# Hospital numbers with no separator: 2-6 CAPITAL letters + 5 or more digits (AGH0001081, IPD20261234).
+# ICD-10 codes (one letter), LOINC codes and doses never have this shape.
+PLAIN_ID = re.compile(r'(?<![\w])[A-Z]{2,6}\d{5,}(?![\w])')
 
 MASKED_AADHAAR = re.compile(r'(?i)(?<!\w)[x*]{4}[ -]?[x*]{4}[ -]?\d{4}(?!\w)')
 COMPACT_ID = re.compile(r'(?i)(?<!\w)[a-z]{2,8}\d{2,4}[-/]\d{5,}(?!\w)')

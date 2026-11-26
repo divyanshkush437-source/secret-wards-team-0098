@@ -93,6 +93,8 @@ def detect_text(text: str, field_hint: str = '', policy_path: str | None = None)
     if policy['enabled_ids']['UHID']:
         for m in p.STRUCTURED_ID.finditer(text):
             add(*m.span(), 'ID_UHID', m[0].upper(), .9)
+        for m in p.PLAIN_ID.finditer(text):
+            add(*m.span(), 'ID_UHID', m[0], .88)
         for m in p.ID_LABEL.finditer(text):
             if any(c.isdigit() for c in m[1]):
                 add(*m.span(1), 'ID_UHID', m[1].upper())

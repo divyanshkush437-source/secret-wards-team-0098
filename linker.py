@@ -43,7 +43,7 @@ _CONSONANTS = {
     'ण': 'n', 'त': 't', 'थ': 'th', 'द': 'd', 'ध': 'dh', 'न': 'n', 'प': 'p',
     'फ': 'ph', 'ब': 'b', 'भ': 'bh', 'म': 'm', 'य': 'y', 'र': 'r', 'ल': 'l',
     'व': 'v', 'श': 'sh', 'ष': 'sh', 'स': 's', 'ह': 'h', 'ळ': 'l',
-    'क़': 'q', 'ख़': 'kh', 'ग़': 'g', 'ज़': 'z', 'ड़': 'd', 'ढ़': 'dh', 'फ़': 'f', 'य़': 'y',
+    'क़': 'q', 'ख़': 'kh', 'ग़': 'g', 'ज़': 'z', 'ड़': 'r', 'ढ़': 'rh', 'फ़': 'f', 'य़': 'y',
 }
 _NUKTA_BASE = {'क': 'क़', 'ख': 'ख़', 'ग': 'ग़', 'ज': 'ज़', 'ड': 'ड़', 'ढ': 'ढ़', 'फ': 'फ़', 'य': 'य़'}
 _VIRAMA, _NUKTA, _ANUSVARA, _CHANDRABINDU, _VISARGA = '्', '़', 'ं', 'ँ', 'ः'
@@ -145,7 +145,9 @@ def name_tokens(name: str) -> tuple:
 
 
 def is_generic(token: str) -> bool:
-    return token in GENERIC or simplify(token) in _GENERIC_SIMPLE
+    # Phonetic comparison only for transliterated spellings ("baano", "devee"),
+    # so a real name such as "Chanda" is not mistaken for the particle "Chand".
+    return token in GENERIC or (re.search(r'aa|ee|oo|ii|uu', token) is not None and simplify(token) in _GENERIC_SIMPLE)
 
 
 def identifying(tokens) -> tuple:
@@ -288,7 +290,11 @@ class Evidence:
     def usable(self) -> bool:
         if self.ambiguous:
             return False
-        if self.ids or self.phones:
+        if self.ids:
+            return True
+        # A phone alone (visitor logs, attendant lists) is not a patient record:
+        # also require a patient name.
+        if self.phones and any(identifying(n) for n in self.names):
             return True
         if any(len(identifying(n)) >= 1 and len(n) >= 2 for n in self.names):
             return True
@@ -433,15 +439,41 @@ class Linker:
                 x = parent[x]
             return x
 
-        for _, i, j in scored:
+        def union(i, j):
             ri, rj = find(i), find(j)
-            if ri == rj:
-                continue
-            if conflict(cluster_ev[ri], cluster_ev[rj]):
-                continue
+            if ri == rj or conflict(cluster_ev[ri], cluster_ev[rj]):
+                return
             keep, drop = (ri, rj) if ri < rj else (rj, ri)
             parent[drop] = keep
             cluster_ev[keep].merge(cluster_ev.pop(drop))
+
+        # Pass 1: records carrying a hard identifier (hospital/national ID or phone).
+        weak = {i for i, k in enumerate(keys) if not (self.records[k].ids or self.records[k].phones)}
+        for _, i, j in scored:
+            if i not in weak and j not in weak:
+                union(i, j)
+        # Pass 2: weak records ("Durga, W/o Shivendra") join only when exactly one
+        # patient fits; two or more candidates means the note is ambiguous.
+        partners = {}
+        for _, i, j in scored:
+            if i in weak:
+                partners.setdefault(i, set()).add(j)
+            if j in weak:
+                partners.setdefault(j, set()).add(i)
+        strong_roots = {find(i) for i in range(len(keys)) if i not in weak}
+        ambiguous = set()
+        for i in sorted(partners):
+            roots = {find(j) for j in partners[i]} & strong_roots
+            if len(roots) > 1:
+                ambiguous.add(i)              # fits two or more identified patients
+            elif len(roots) == 1:
+                union(i, roots.pop())
+        # Weak notes that match no identified patient may still join each other,
+        # unless either of them is ambiguous.
+        for _, i, j in scored:
+            if i in weak and j in weak and not ({i, j} & ambiguous):
+                if find(i) not in strong_roots and find(j) not in strong_roots:
+                    union(i, j)
         self.cluster_evidence = cluster_ev
         result = {}
         for k in self.records:

@@ -3,6 +3,7 @@ import csv
 import io
 import json
 import math
+import re
 from dataclasses import dataclass
 
 
@@ -107,7 +108,12 @@ def parse(raw, suffix):
         # Known record arrays first, then any single array of objects
         # (e.g. {"results": [...]}) so each element gets its own locator.
         candidates = [k for k in ("visits", "patients") if isinstance(data.get(k), list)]
-        others_scalar = lambda k: all(not isinstance(v, (dict, list)) for j, v in data.items() if j != k)
+        # Other top-level values must be scalars or export metadata blocks
+        # ("meta", "export", "header" ...), never patient data such as a
+        # report's "patient" object.
+        meta_key = re.compile(r"(?i)^_?(?:meta(?:data)?|export(?:_?meta)?|header|info|source|system|summary|config|facility|generated|run)$")
+        others_scalar = lambda k: all(not isinstance(v, (dict, list)) or (isinstance(v, dict) and meta_key.match(j))
+                                      for j, v in data.items() if j != k)
         candidates += sorted((k for k, v in data.items() if k not in candidates and isinstance(v, list) and v
                               and all(isinstance(x, dict) for x in v) and others_scalar(k)), key=lambda k: -len(data[k]))[:1]
         for key in candidates:

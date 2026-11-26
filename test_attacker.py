@@ -63,13 +63,30 @@ def decoded(text: str) -> str:
 def linkage(truth, report, records):
     by_sha = {f['input_sha256']: f['output'] for f in report['files']}
     claim = {(r['file'], r['loc']): r['patient'] for r in records}
+    by_file = defaultdict(dict)
+    for r in records:
+        by_file[r['file']][r['loc']] = r['patient']
+
+    def lookup(out, loc):
+        # Same rule as the official scorer: exact locator, a JSON-pointer ancestor, or 'doc'.
+        recs = by_file.get(out, {})
+        if loc in recs:
+            return recs[loc]
+        if loc.startswith('/'):
+            parts = loc.split('/')
+            for i in range(len(parts) - 1, 1, -1):
+                if '/'.join(parts[:i]) in recs:
+                    return recs['/'.join(parts[:i])]
+        return recs.get('doc')
     units = []
     for path, meta in truth['files'].items():
         out = by_sha.get(meta.get('sha256'))
         if not out:
             continue
         for loc, unit in meta.get('units', {}).items():
-            units.append((unit.get('patient'), unit.get('link'), claim.get((out, loc))))
+            if loc.startswith('@'):
+                continue                  # file-level leak channels, not patient records
+            units.append((unit.get('patient'), unit.get('link'), lookup(out, loc)))
     pred = defaultdict(list)
     for i, (pt, link, psn) in enumerate(units):
         if psn:
@@ -207,7 +224,17 @@ def kit_selfcheck(kit: Path, out: Path, show=0):
                 tot_channel[e['channel']] += 1
                 surface = _kit_norm(e['surface'])
                 hay = fname if e['channel'] == 'filename' else text
-                hit = bool(surface) and surface in hay if (exists or e['channel'] == 'filename') else False
+                if not (exists or e['channel'] == 'filename') or not surface:
+                    hit = False
+                elif e['type'] in ('PATIENT_NAME', 'RELATIVE_NAME', 'VILLAGE') and e['channel'] != 'filename':
+                    # Official rule (docs/SCORING.md): whole-word occurrences, minus those
+                    # allowed inside preserve probes such as "Dr. Ramesh Tripathi".
+                    pat = re.compile(r'(?<![\w\u0900-\u097f])' + re.escape(surface) + r'(?![\w\u0900-\u097f])')
+                    allowed = sum(len(pat.findall(_kit_norm(pv['text']))) for uu in f['units'].values()
+                                  for pv in uu.get('preserve') or [])
+                    hit = len(pat.findall(hay)) > allowed
+                else:
+                    hit = surface in hay
                 if hit:
                     leaks[e['type']] += 1
                     by_script[e['script']] += 1
@@ -265,10 +292,11 @@ def preserved(truth, report, texts):
 
 
 # ------------------------------------------------------------------ dates
-DATE_RE = re.compile(r'\d{1,4}[-/.]\d{1,2}[-/.]\d{2,4}')
+DATE_RE = re.compile(r'\d{1,4}[-/.](?:\d{1,2}|[A-Za-z]{3})[-/.]\d{2,4}')
 
 
 def intervals(truth, report, texts):
+    from datetime import date
     from privacy import parse_numeric
     by_sha = {f['input_sha256']: f['output'] for f in report['files']}
     ok = bad = 0
@@ -284,6 +312,10 @@ def intervals(truth, report, texts):
             for d in ds:
                 m = re.search(re.escape(d['anchor']) + r'\s*(' + DATE_RE.pattern + ')', text)
                 value = parse_numeric(m[1], order)[0] if m else None
+                if m and value is None:
+                    mm = re.fullmatch(r'(\d{1,2})-([A-Za-z]{3})-(\d{4})', m[1])
+                    if mm and mm[2][:3].lower() in _MON:
+                        value = date(int(mm[3]), _MON.index(mm[2][:3].lower()) + 1, int(mm[1]))
                 got.append((d['true'], value))
             for (t1, v1), (t2, v2) in combinations(got, 2):
                 if v1 is None or v2 is None:

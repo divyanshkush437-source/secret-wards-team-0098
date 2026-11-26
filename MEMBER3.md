@@ -71,6 +71,30 @@ Kit self-check (`check_dev.py` rules, ported as `kit_selfcheck` in `test_attacke
 0 of 4 canaries, 0 raw copies, 4,787 of 4,855 medical values kept (all 68 lost are the
 deliberate privacy generalisations above).
 
+Hidden-style test (`tools/make_hidden_dataset.py`, two seeds): 496 files, 270 new patients,
+four hospital systems with formats never seen before (`Pt. Name`/`Contact No.` labels, UTF-16
+TSV with Devanagari headers, `{"meta", "records"}` JSON, `dd-Mon-yyyy` and `dd.mm.yyyy`
+dates, `AGH0001081` IDs, `(73036) 71330` phones, canaries in a header, a JSON key, a file
+name and a base64 attachment). First run of the unchanged system: 92% of personal data
+removed, linkage recall 65-68%, 2 of 4 canaries leaked. After the fixes in this repo:
+
+| Measure | Hidden set A | Hidden set B |
+|---|---|---|
+| Personal data visible (kit self-check rules) | 0 / 3,808 | 0 / 4,445 |
+| Canaries | 0 / 4 | 0 / 4 |
+| Linkage precision / recall | 1.000 / 1.000 | 1.000 / 1.000 |
+| Stay lengths exact after shifting | 112 / 112 | 134 / 134 |
+| Voter-list attack: records / pooled profiles (raw) | 0 / 0 (198 / 60) | 0 / 0 (242 / 80) |
+| Targeted attack (raw) | 11 / 36 (6) | 13 / 45 (12) |
+| Medical values kept | 94.7% | 95.4% |
+
+Fixes: separator-less hospital numbers, `{"meta", "records"}` JSON split per record,
+`dd-Mon-yyyy` dates, Hindi `पिन कोड`/`गाँव` headers, bracketed phones, names written
+into headers/keys, kinship honorifics (bhaiya, chacha ...), chat senders and attendants
+never taken as the patient, weak notes linked only when exactly one patient fits,
+ड़/ढ़ transliterated as r/rh, districts read from free-text addresses for the risk estimate,
+and a "65+" top code for very old patients who stay rare.
+
 Unseen-format check: a copy of the practice set with renamed CSV headers and JSON keys,
 reworded note labels, `dd.mm.yyyy` dates and UPPERCASE names gives linkage 1.000 / 1.000,
 zero identifier/village leaks, 23/23 intervals and a clean contract check.
