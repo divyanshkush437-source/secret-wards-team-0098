@@ -18,7 +18,7 @@ HI_MONTH_ALT = {'फरवरी': 2, 'सितम्बर': 9, 'नवम्�
 _HI = '|'.join(sorted({re.escape(m) for m in HI_MONTHS} | {re.escape(m) for m in HI_MONTH_ALT}, key=len, reverse=True))
 HINDI_DATE = re.compile(r'(?<![\w\u0900-\u097f])\d{1,2}\s*(?:' + _HI + r')[,\s]*\d{4}(?![\w\u0900-\u097f])')
 # "7 March" / "5 Jan" with no year (short notes): shifted assuming the reference year.
-NOYEAR_DATE = re.compile(r"(?<![\w/.-])(?:0?[1-9]|[12]\d|3[01])\s+(?:January|February|March|April|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\b(?![\s,'-]*\d)")
+NOYEAR_DATE = re.compile(r"(?<![\w/.-])(?:0?[1-9]|[12]\d|3[01])\s+(?:January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\b(?![\s,'-]*\d)")
 ORD_DATE = re.compile(r"(?<!\w)\d{1,2}(?:st|nd|rd|th)\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?,?\s+(?:'\d{2}|\d{4})(?!\w)", re.I)
 TEXT_DATE = re.compile(r'(?<!\w)\d{1,2}(?:\s+|-)(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)(?:\s+|-)\d{4}(?!\w)', re.I)
 ID_LABEL = re.compile(r'\b(?:UHID|MRN|IPD|OPD|Reg(?:istration)?\s*(?:No\.?)?|Insurance(?:\s*(?:ID|No\.?))?|Policy\s*(?:ID|No\.?))\s*[:=#-]?\s*([A-Za-z0-9][A-Za-z0-9/-]{1,39})\b', re.I)

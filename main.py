@@ -59,6 +59,9 @@ def run(root, output, processor, secret):
                 raw, digest = snapshot(path)
                 if digest != entry["input_sha256"]:
                     raise ValueError("input changed")
+                # Failed files must not inflate the released-data audit counters.
+                previous_entities = getattr(processor, "entities", {}).copy()
+                previous_generalized = getattr(processor, "generalized", 0)
                 try:
                     written = export_one(doc_bytes=raw, path=path, root=root, name=name, secret=secret,
                                          processor=processor, clean=clean, manifest=manifest)
@@ -69,6 +72,11 @@ def run(root, output, processor, secret):
                 except (TypeError, KeyError, RecursionError, UnicodeError):
                     written = None
                 if written is None:
+                    if hasattr(processor, "entities"):
+                        processor.entities.clear()
+                        processor.entities.update(previous_entities)
+                    if hasattr(processor, "generalized"):
+                        processor.generalized = previous_generalized
                     entry["reason"] = "processing_error"      # quarantined, never half-exported
                     continue
                 exported, rows = written
