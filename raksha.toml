@@ -1,0 +1,4 @@
+[submission]
+name = "secret-wards-team-0098"
+setup = "python3 -m pip install -r requirements.txt"
+run = "python3 main.py --input {input} --output {output}"
