@@ -59,37 +59,32 @@ def run(root, output, processor, secret):
                 raw, digest = snapshot(path)
                 if digest != entry["input_sha256"]:
                     raise ValueError("input changed")
-                doc = parse(raw, path.suffix.lower())
-                rel = safe_path(path.relative_to(root), secret, getattr(processor, "name_pattern", None))
-                exported = "sanitized/" + rel
-                if doc.envelope:
-                    doc.envelope, _ = processor.clean(name, None, doc.envelope)
-                values = []
-                rows = []
-                for loc, data in doc.records:
-                    value, patient = processor.clean(name, loc, data)
-                    if patient is not None and not re.fullmatch(r"PSN-[A-Z0-9]+", patient):
-                        raise ValueError("invalid patient identifier")
-                    if patient is not None:
-                        rendered_value = value if isinstance(value,str) else json.dumps(value,ensure_ascii=False,allow_nan=False)
-                        if not re.search(r'(?<![A-Za-z0-9-])'+re.escape(patient)+r'(?![A-Za-z0-9-])',rendered_value):
-                            raise ValueError("patient identifier missing from output record")
-                    values.append(value)
-                    rows.append({"file": exported, "loc": loc, "patient": patient})
-                destination = clean / rel
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                with destination.open("x", encoding="utf-8", newline="") as handle:
-                    handle.write(doc.render(values))
-                for row in rows:
-                    manifest.write(json.dumps(row) + "\n")
+                try:
+                    written = export_one(doc_bytes=raw, path=path, root=root, name=name, secret=secret,
+                                         processor=processor, clean=clean, manifest=manifest)
+                except ValueError as exc:
+                    if str(exc) in FATAL:
+                        raise
+                    written = None
+                except (TypeError, KeyError, RecursionError, UnicodeError):
+                    written = None
+                if written is None:
+                    entry["reason"] = "processing_error"      # quarantined, never half-exported
+                    continue
+                exported, rows = written
                 del entry["reason"]
                 entry.update(status="sanitized", output=exported)
                 processed += len(rows)
                 linked += sum(r["patient"] is not None for r in rows)
+            failed = sum(e.get("reason") == "processing_error" for e in entries)
+            if files and failed == len(files):
+                # Every parseable file failed: the processor is broken, not the data.
+                raise ValueError("processing failed for every file")
         rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        sanitized = sum(e["status"] == "sanitized" for e in entries)
         entities = dict(getattr(processor, "entities", {}))
-        counts = {"files_total": len(entries), "files_sanitized": len(files),
-                  "files_quarantined": len(entries) - len(files), "records_processed": processed,
+        counts = {"files_total": len(entries), "files_sanitized": sanitized,
+                  "files_quarantined": len(entries) - sanitized, "records_processed": processed,
                   "identifiers_detected": sum(entities.values()), "records_linked": linked,
                   "records_generalized": getattr(processor, "generalized", 0),
                   "records_suppressed": 0, "records_quarantined": 0}
@@ -101,6 +96,39 @@ def run(root, output, processor, secret):
         for filename in ("sanitized", "records.jsonl", "report.json"):
             (stage / filename).rename(output / filename)
     return report
+
+
+# Processor-contract violations are bugs, not bad data: they still stop the run.
+FATAL = {"input changed", "invalid patient identifier", "patient identifier missing from output record"}
+
+
+def export_one(doc_bytes, path, root, name, secret, processor, clean, manifest):
+    """Clean one file completely in memory, then write it. Returns (exported, rows)."""
+    doc = parse(doc_bytes, path.suffix.lower())
+    rel = safe_path(path.relative_to(root), secret, getattr(processor, "name_pattern", None))
+    exported = "sanitized/" + rel
+    if doc.envelope:
+        doc.envelope, _ = processor.clean(name, None, doc.envelope)
+    values = []
+    rows = []
+    for loc, data in doc.records:
+        value, patient = processor.clean(name, loc, data)
+        if patient is not None and not re.fullmatch(r"PSN-[A-Z0-9]+", patient):
+            raise ValueError("invalid patient identifier")
+        if patient is not None:
+            rendered_value = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, allow_nan=False)
+            if not re.search(r'(?<![A-Za-z0-9-])' + re.escape(patient) + r'(?![A-Za-z0-9-])', rendered_value):
+                raise ValueError("patient identifier missing from output record")
+        values.append(value)
+        rows.append({"file": exported, "loc": loc, "patient": patient})
+    text = doc.render(values)               # render fully before touching the disk
+    destination = clean / rel
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with destination.open("x", encoding="utf-8", newline="") as handle:
+        handle.write(text)
+    for row in rows:
+        manifest.write(json.dumps(row) + "\n")
+    return exported, rows
 
 
 def main():

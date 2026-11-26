@@ -345,6 +345,28 @@ class HiddenFormatTests(unittest.TestCase):
         self.assertEqual(p.linker.records[('f', 'doc')].names, {L.name_tokens('Reena')})
 
 
+class RobustnessTests(unittest.TestCase):
+    def test_one_bad_file_is_quarantined_not_fatal(self):
+        import gzip
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder) / 'input'
+            root.mkdir()
+            (root / 'note.txt').write_text('Patient Name: Zorvan Takreli\nDolo 650 BD x 5 days\n')
+            gz = base64.b64encode(gzip.compress(b'Patient Zorvan Takreli mobile 9123456780', mtime=0)).decode()
+            png = base64.b64encode(b'\x89PNG\r\n\x1a\nZorvan Takreli').decode()
+            (root / 'bundle.json').write_text(json.dumps({'resourceType': 'Bundle', 'type': 'document', 'entry': [
+                {'resource': {'resourceType': 'DocumentReference', 'content': [
+                    {'attachment': {'contentType': 'application/gzip', 'data': gz}},
+                    {'attachment': {'contentType': 'image/png', 'data': png}}]}}]}))
+            report = run(root, Path(folder) / 'out', Processor(b'k'), b'k')
+            self.assertEqual(report['counts']['files_sanitized'], 2)
+            text = (Path(folder) / 'out/sanitized/bundle.json').read_text()
+            data = json.loads(text)['entry'][0]['resource']['content']
+            self.assertNotIn('Takreli', gzip.decompress(base64.b64decode(data[0]['attachment']['data'])).decode())
+            self.assertNotIn('data', data[1]['attachment'])          # unreadable binary: data removed
+            self.assertNotIn('Takreli', text)
+
+
 class LetterheadTests(unittest.TestCase):
     def test_high_risk_letterhead_district_masked(self):
         p = Processor(b'k')
@@ -356,6 +378,39 @@ class LetterheadTests(unittest.TestCase):
         self.assertIn('Tinypur', out)              # districts are always kept (max_level 2)
         self.assertIn('18+', out)                  # lone very old patient: adult-only age, still truthful
         self.assertNotIn(' 97 ', out)
+
+
+class CrossFileTests(unittest.TestCase):
+    def test_ambiguous_file_borrows_date_order_from_same_letterhead(self):
+        p = Processor(b'k')
+        head = 'AROGYA HOSPITAL - DISCHARGE SUMMARY\n'
+        p.observe('a', 'doc', head + 'Patient Name: Ravi Kant\nDate of Admission: 02/15/2026\nDate of Discharge: 02/19/2026\n')
+        p.observe('b', 'doc', head + 'Patient Name: Sunil Rao\nDate of Admission: 02/01/2026\nDate of Discharge: 02/06/2026\n')
+        p.observe('c', 'doc', 'OTHER CLINIC NOTE\nPatient Name: Asha Devi\nDate: 02/01/2026\n')
+        p.finish()
+        self.assertEqual(p._order('a'), 'MDY')
+        self.assertEqual(p._order('b'), 'MDY')     # no proof in the file itself; same letterhead says MDY
+        self.assertEqual(p._order('c'), 'DMY')     # different source keeps the Indian default
+
+    def test_village_keys_match_across_scripts(self):
+        self.assertEqual(L.place_key(L.transliterate('चंदडीह')), L.place_key('chanddih'))
+        self.assertEqual(L.place_key(L.transliterate('लालमऊ')), L.place_key('lalmau'))
+
+
+class DeobfuscationTests(unittest.TestCase):
+    def test_hidden_characters_and_lookalikes_are_seen_through(self):
+        import deobfuscate as D
+        text = 'Ph: 98\u200b76\u0435'
+        view, idx = D.clean_view(text)
+        self.assertEqual(view, 'Ph: 9876e')
+        self.assertEqual(D.to_original(idx, 4, len(view)), (4, len(text)))
+
+    def test_number_words_and_spaced_digits_found(self):
+        import deobfuscate as D
+        kinds = {k for _, _, k, _ in D.number_spans('call nine eight seven six five four three two one zero')}
+        self.assertIn('PHONE', kinds)
+        self.assertIn('PHONE', {k for _, _, k, _ in D.number_spans('mob 9 8 7 6 5 4 3 2 1 0')})
+        self.assertEqual(D.number_spans('SNOMED CT: 9876543210'), [])
 
 
 class EndToEndTests(unittest.TestCase):

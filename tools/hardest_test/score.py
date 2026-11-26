@@ -172,7 +172,7 @@ def all_dates(text: str):
     return found
 
 
-def date_after(text: str, anchor: str):
+def date_after(text: str, anchor: str, order: str = 'dmy'):
     t = fold(text)
     i = t.find(fold(anchor))
     if i < 0:
@@ -184,6 +184,8 @@ def date_after(text: str, anchor: str):
         return _d(int(m[1]), int(m[2]), int(m[3]))
     m = re.match(r'(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})', window)
     if m:
+        if str(order).lower() == 'mdy':
+            return _d(int(m[3]), int(m[1]), int(m[2]))
         return _d(int(m[3]), int(m[2]), int(m[1]))
     return sorted(ds)[0] if ds else None
 
@@ -291,10 +293,22 @@ class Scorer:
             raw, text, digs = self.text_of(rel) if exported else ('', '', '')
             allowed_text = fold(' '.join(pv['text'] for u in meta['units'].values() for pv in u.get('preserve', [])))
             for loc, u in meta['units'].items():
+                rec_text = rec_digs = None
+                if exported and (loc.startswith('row:') or loc.startswith('/')):
+                    # locate the record, as the official scorer does; fall back to the file
+                    rt = record_text(raw, rel, loc)
+                    if rt and rt != raw:
+                        full = reveal(rt)
+                        rec_text, rec_digs = fold(full), digits_view(full)
                 for e in u['entities']:
                     if e['type'] == 'CANARY':
                         continue
-                    hay, hay_d = (fold(re.sub(r'[_\-.]', ' ', rel or '')), digits_view(rel or '')) if e['channel'] == 'filename' else (text, digs)
+                    if e['channel'] == 'filename':
+                        hay, hay_d = fold(re.sub(r'[_\-.]', ' ', rel or '')), digits_view(rel or '')
+                    elif rec_text is not None and e['channel'] in ('content', 'base64', 'percent', 'unicode_escape', 'formula'):
+                        hay, hay_d = rec_text, rec_digs
+                    else:
+                        hay, hay_d = text, digs
                     if e['channel'] == 'folder':
                         hay, hay_d = out_names, ''
                     hit = self._hit(e, hay, hay_d, allowed_text) if (exported or e['channel'] in ('filename', 'folder')) else 0.0
@@ -343,10 +357,13 @@ class Scorer:
             return got / len(toks)
         if m == 'digits':
             key = e.get('key') or ''
-            if len(key) >= 5 and key in hay_d:
+            # Digits written with single separators inside one number ("98765 43210",
+            # "9 8 7 6...", "091-679-246-1790") are joined; digits in different cells are not.
+            joined = re.sub(r'(?<=\d)[ .\-](?=\d)', '', hay)
+            if len(key) >= 5 and re.search(r'(?<!\d)(?:0{0,2}91|0)?' + key + r'(?!\d)', joined):
                 return 1.0
-            if len(key) >= 6 and key in hay_d.replace('|', ''):
-                return 1.0
+            if any(w in NUMBER_WORDS for w in hay.split()) and len(key) >= 6 and key in hay_d.replace('|', ''):
+                return 1.0                                        # number words
             surf = fold(e['surface'])
             return 1.0 if surf and surf in hay else 0.0
         if m == 'dob':
@@ -412,10 +429,10 @@ class Scorer:
             for loc, u in meta['units'].items():
                 rt = record_text(raw, rel, loc)
                 ds = [d for d in u.get('dates', []) if d.get('anchor')]
-                vals = [(d, date_after(rt, d['anchor'])) for d in ds]
+                vals = [(d, date_after(rt, d['anchor'], d.get('hint') or meta.get('date_hint') or 'dmy')) for d in ds]
                 for d in u.get('dates', []):
                     checked += 1
-                    if fold(d['surface']) in fold(rt):
+                    if d.get('surface') and fold(d['surface']) in fold(rt):
                         unshifted += 1
                 for (d1, v1), (d2, v2) in combinations(vals, 2):
                     if v1 is None or v2 is None:

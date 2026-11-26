@@ -140,6 +140,44 @@ def shift_text_date(raw: str, days: int, order: str = 'DMY'):
     value, layout = parse_numeric(raw, order)
     if value is not None:
         return render_numeric(value + timedelta(days=days), layout)
+    ny = re.fullmatch(r'(\d{1,2})(\s+)([A-Za-z]{3})([a-z]*)', raw)
+    if ny and ny[3].lower() in _MONTHS:
+        value = _safe(2026, _MONTHS.index(ny[3].lower()) + 1, int(ny[1]))     # no year given
+        if value is None:
+            return None
+        new = value + timedelta(days=days)
+        full = len(ny[3] + ny[4]) > 3
+        mon = (_FULL[new.month - 1] if full else _MONTHS[new.month - 1]).capitalize()
+        return f'{new.day}{ny[2]}{mon.upper() if ny[3].isupper() else mon}'
+    om = re.fullmatch(r"(\d{1,2})(st|nd|rd|th)(\s+)([A-Za-z]{3})([a-z]*\.?,?\s+)('?)(\d{2}|\d{4})", raw)
+    if om and om[4][:3].lower() in _MONTHS:
+        y = int(om[7])
+        y = y + (2000 if y <= 30 else 1900) if y < 100 else y
+        value = _safe(y, _MONTHS.index(om[4][:3].lower()) + 1, int(om[1]))
+        if value is None:
+            return None
+        new = value + timedelta(days=days)
+        suf = 'th' if 10 <= new.day % 100 <= 20 else {1: 'st', 2: 'nd', 3: 'rd'}.get(new.day % 10, 'th')
+        yr = str(new.year)[-2:] if len(om[7]) == 2 else str(new.year)
+        letters = re.match(r'[a-z]*', om[5])[0]
+        tail = om[5][len(letters):]                       # ".", ",", spaces after the month word
+        full = bool(letters)
+        mon = (_FULL[new.month - 1] if full else _MONTHS[new.month - 1]).capitalize()
+        if om[4].isupper():
+            mon = mon.upper()
+        return f'{new.day}{suf}{om[3]}{mon}{tail}{om[6]}{yr}'
+    hm = re.fullmatch(r'(\d{1,2})(\s*)([\u0900-\u097f\u093c]+)([,\s]*)(\d{4})', raw)
+    if hm:
+        from detector.patterns import HI_MONTHS, HI_MONTH_ALT
+        name = hm[3]
+        month = HI_MONTHS.index(name) + 1 if name in HI_MONTHS else HI_MONTH_ALT.get(name)
+        value = _safe(int(hm[5]), month, int(hm[1])) if month else None
+        if value is None:
+            return None
+        new = value + timedelta(days=days)
+        deva = any('\u0966' <= c <= '\u096f' for c in hm[1] + hm[5])
+        digits = (lambda x: ''.join('०१२३४५६७८९'[int(c)] for c in x)) if deva else (lambda x: x)
+        return f'{digits(str(new.day))}{hm[2]}{HI_MONTHS[new.month - 1]}{hm[4]}{digits(str(new.year))}'
     m = re.fullmatch(r'(\d{1,2})(\s+|-)([A-Za-z]+)(\s+|-)(\d{4})', raw)
     if m and m[3][:3].lower() in _MONTHS:
         value = _safe(int(m[5]), _MONTHS.index(m[3][:3].lower()) + 1, int(m[1]))

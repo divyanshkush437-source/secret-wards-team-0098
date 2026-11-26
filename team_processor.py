@@ -17,11 +17,12 @@ from detector.context_rules import resolve, overlaps
 from member2_processor import Processor as DetectorAdapter, DIRECT
 import linker as L
 import privacy as P
+import deobfuscate as D
 
 ICD = re.compile(r'(?<![A-Za-z0-9])[A-TV-Z][0-9]{2}(?:\.[0-9]{1,2})?(?![A-Za-z0-9.])')
 REGION_KEYS = {'district', 'tehsil', 'taluka', 'jila', 'जिला', 'तहसील', 'state', 'block'}
 VILLAGE_KEYS = re.compile(r'(?i)village|gaon|gram|mohalla|city|ग्राम|गांव')
-PLACE_STOP = set('house makan ward mohalla tehsil distt district near opp road colony gali gram village vill post block nagar kalan khurd basti purwa ganj pur bazar mandir school tanki primary chowk'.split())
+PLACE_STOP = set('house makan ward mohalla tehsil distt district near opp road colony gali gram village vill post block nagar kalan khurd basti purwa ganj pur bazar mandir school tanki primary chowk street cross lane marg sector main bypass highway nh sh phase extension layout behind beside opposite'.split())
 _PLACE_STOP_KEYS = {L.place_key(x) for x in PLACE_STOP}
 FHIR_ID_KEYS = {'id', 'reference', 'fullUrl'}
 
@@ -38,16 +39,22 @@ def _id_key(span):
     return (kind, value) if value else None
 
 
-_RELATIVE_KEY = re.compile(r'pita|pati|father|mother|husband|wife|spouse|guardian|relative|attendant|kin|abhibhavak|पिता|पति|अभिभावक')
+_RELATIVE_KEY = re.compile(r'pita|pati|father|mother|husband|wife|spouse|guardian|relative|attendant|kin|abhibhavak|rishtedar|पिता|पति|अभिभावक')
 _DOCTOR_KEY = re.compile(r'doctor|dr|consultant|physician|referred|ref|author|practitioner|nurse|staff|clerk|by$')
 
 
 _RELATIVE_CONTEXT = re.compile(r"(?i)(?:pita|pati|father|mother|husband|wife|spouse|guardian|relative|attendant|kin|पिता|पति|पत्नी|माता|अभिभावक)(?:['’]s)?\W*(?:ka|ki|का|की)?\s*(?:naam|name|नाम)?\s*[:=-]?\s*$")
 
 
+_NAME_PART_KEY = re.compile(r'(?i)first|given|last|surname|family|middle|fore')
+_PATH_KEY = re.compile(r'(?i)path|export(ed)?_?from|source_?(file|dir|folder)?$|folder|directory|^dir$|file_?name|location_on_disk')
+_BY_KEY = re.compile(r'(?i)(exported|entered|created|uploaded|verified|updated|modified|recorded|collected|reported)_?by$|^(operator|clerk|user(name)?)$')
+_DATA_URI = re.compile(r'(data:[\w/+.-]*(?:;[\w-]+=[\w-]+)*);base64,([A-Za-z0-9+/]+={0,2})')
 _CHAT_SENDER = re.compile(r"\]\s*-?\s*$")      # "[11/09/26, 8:13 pm] Ajay Bhaiya:" is the sender, not the patient
 _RELATIVE_AFTER = re.compile(r"(?i)\s*[(,-]\s*(?:attendant|relative|visitor|guardian|husband|wife|father|mother|son|daughter|brother|sister|bhai|pati|patni)\b")
-_NAME_IN_KEY = re.compile(r"(?i:\b(?:by|for|of|to|from|attendant|relative|patient|pt|name|naam|re)\b)[\s:_-]+([A-Z][a-z]+(?:[\s_]+[A-Z][a-z]+)+)")
+_NAME_IN_KEY = re.compile(r"(?i:(?<![A-Za-z])(?:by|for|of|to|from|attendant|relative|patient|pt|name|naam|re|caller|contact)(?![A-Za-z]))[\s:_-]+([A-Z][a-z]+(?:[\s_]+[A-Z][a-z]+)+)")
+_PERSON_URL = re.compile(r"(?i)maiden|mother|father|relative|kin|informant|contact|guardian|spouse|name|author|caregiver")
+_TWIN = re.compile(r"(?i)\btwin\s*[-#:]?\s*([12ab])\b|(?:जुड़वां|जुड़वा)\s*([12])")
 
 
 def romanised_hint(key):
@@ -67,7 +74,11 @@ def romanised_hint(key):
         return 'dob'
     if re.fullmatch(r'(jila|zila|zilla|dist|distt|districtname)', compact):
         return '__district__'
-    if re.search(r'locality|landmark|colony|residence|resident|addr|basti|mohalla|street|housename|houseno|town|tehsil|taluk|block|panchayat', compact):
+    if re.search(r'nidan|nidaan|diagnos|rog$|bimari|beemari|lakshan|upchar|ilaj|dawa|dawai|aushadhi|jaanch|janch', compact):
+        return '__clinical__'
+    if re.search(r'esic|policy|insurance|member(id|no)|beneficiary|cardno|scheme(id|no)|tpa|pmjay|ayushman|uan', compact):
+        return 'uhid'
+    if re.search(r'locality|landmark|colony|residence|resident|addr|basti|mohalla|street|housename|houseno|town|tehsil|taluk|block|panchayat|^area$', compact):
         return 'address'
     if re.search(r'village|gaon|gaanv|gaanw|gram', compact):
         return 'address'
@@ -114,6 +125,7 @@ class Processor(DetectorAdapter):
         self.linker = L.Linker()
         self.regions = set()
         self.file_order = {}
+        self.file_group = {}
         self.assignment = {}
         self.cluster_psn = {}
         self.cluster_names = {}
@@ -122,14 +134,24 @@ class Processor(DetectorAdapter):
         self._ctx = None
         self._generalized_record = False
         self.district_pattern = None
+        self.slug_pattern = None
         self.dx_pairs = set()
         self.rare_dx_pattern = None
         self.rare_dx_label = {}
 
     def _hint(self, key, path, inherited='', role=''):
+        if key in ('authorString', 'author_name', 'informant', 'caregiver'):
+            return 'relative'
         hint = super()._hint(key, path, inherited, role)
+        if isinstance(key, str) and re.search(r'(?i)MM[/-]DD', key):
+            return hint                          # keep the declared month-first date order
         if hint == 'patient name' and any(str(x).casefold() in {'contact', 'guardian', 'relatedperson', 'attendant', 'link'} for x in path):
             return 'relative'
+        if key in ('first', 'last', 'middle', 'surname', 'firstname', 'lastname') and inherited in ('patient name', 'relative'):
+            return inherited
+        if any(_RELATIVE_KEY.search(re.sub(r'[^a-z\u0900-\u097f]', '', L.transliterate(str(x)).casefold().replace('patient', '')))
+               for x in path) and (hint == 'patient name' or romanised_hint(key) == 'patient name'):
+            return 'relative'                    # {"abhibhavak": {"naam": ...}} is the guardian's name
         if hint == key and isinstance(key, str):
             alias = romanised_hint(key)
             if alias:
@@ -150,11 +172,70 @@ class Processor(DetectorAdapter):
                 return key
         return super()._key(key)
 
+    # ------------------------------------------------------------ disguises
+    @staticmethod
+    def _mapped(view_spans, text, idx):
+        out = []
+        for sp in view_spans:
+            ab = D.to_original(idx, sp.start, sp.end)
+            if ab:
+                out.append(EntitySpan(ab[0], ab[1], sp.entity_type, text[ab[0]:ab[1]], sp.normalized, sp.action, sp.confidence))
+        return out
+
+    def _number_spans(self, text, view, idx):
+        out = []
+        for a, b, kind, norm in D.number_spans(view):
+            ab = D.to_original(idx, a, b)
+            if ab:
+                out.append(EntitySpan(ab[0], ab[1], kind, text[ab[0]:ab[1]], norm, 'REDACT', .93))
+        return out
+
+    def _detect(self, text, hint):
+        """Detector spans on the text and on its de-obfuscated view."""
+        spans = list(detect_text(text, hint).spans)
+        view, idx = D.clean_view(text)
+        if view != text:
+            spans += self._mapped(detect_text(view, hint).spans, text, idx)
+        spans += self._number_spans(text, view, idx)
+        return resolve(spans)
+
+    def _spans(self, text, hint):
+        spans = list(super()._spans(text, hint))
+        if getattr(self, 'slug_pattern', None) is not None and hint not in ('__district__',):
+            from detector.medical_whitelist import protected_ranges
+            from detector.context_rules import name_candidates
+            from detector.engine import _policy
+            prot = protected_ranges(text) + name_candidates(text, _policy(None), hint)[1]
+            for m in self.slug_pattern.finditer(text):
+                if not any(overlaps(m.span(), r) for r in prot):
+                    spans.append(EntitySpan(m.start(), m.end(), 'PERSON', m[0], m[0].casefold(), 'PSEUDONYMIZE', .9))
+        if hint == '__clinical__' and self.name_pattern is not None:
+            # Fields classed as clinical (title, display, system, procedure) can still
+            # carry a full learned name ("Summary - Satyam Gautam", ".../satyam-gautam").
+            from detector.medical_whitelist import protected_ranges
+            from detector.context_rules import name_candidates
+            from detector.engine import _policy
+            prot = protected_ranges(text) + name_candidates(text, _policy(None), hint)[1]   # doctors stay
+            for m in self.name_pattern.finditer(text):
+                if re.search(r'[\s_-]', m[0]) and not any(overlaps(m.span(), r) for r in prot):
+                    spans.append(EntitySpan(m.start(), m.end(), 'PERSON', m[0], m[0].casefold(), 'PSEUDONYMIZE', .9))
+        view, idx = D.clean_view(text)
+        if view != text:
+            spans += self._mapped(super()._spans(view, hint), text, idx)
+        spans += self._number_spans(text, view, idx)
+        return resolve(spans)
+
     # ------------------------------------------------------------ observe
     def observe(self, file_id, loc, data):
+        if isinstance(data, str):
+            head = next((ln.strip() for ln in data.splitlines() if ln.strip()), '')
+            self.file_group[file_id] = re.sub(r'[\d\W_]+', ' ', head.casefold())[:60].strip()
+        elif loc is not None and str(loc).startswith('row:') and isinstance(data, dict):
+            self.file_group.setdefault(file_id, 'cols:' + '|'.join(sorted(data))[:120])
         evidence = L.Evidence()
         strong, weak = set(), set()
         strong_order = []
+        name_parts = []
         dates = []
         raw_dates = []
         order_votes = self.file_order.setdefault(file_id, Counter())
@@ -177,7 +258,7 @@ class Processor(DetectorAdapter):
                 if vote:
                     order_votes[vote] += 1
             evidence.codes.update(ICD.findall(text) if hint == '__clinical__' or 'iagnos' in key or '(' in text else ())
-            spans = detect_text(text, hint).spans
+            spans = self._detect(text, hint)
             person_like = [s for s in spans if s.entity_type == 'PERSON' and s.confidence >= .85]
             strong_leaf = hint == 'patient name' 
             for span in spans:
@@ -185,6 +266,8 @@ class Processor(DetectorAdapter):
                 if kind in {'PERSON', 'RELATIVE'} and span.confidence >= .85 and len(span.text.strip()) >= 3 and loc is not None:
                     # Envelope "name" fields describe facilities, not people.
                     self.names.add(span.text.strip())
+                if kind in ('PERSON', 'RELATIVE'):
+                    span = EntitySpan(span.start, span.end, kind, D.clean_view(span.text)[0], span.normalized, span.action, span.confidence)
                 if kind == 'PERSON' and span in person_like and (
                         _RELATIVE_CONTEXT.search(text[max(0, span.start - 30):span.start].split('\n')[-1])
                         or _RELATIVE_AFTER.match(text[span.end:span.end + 25])
@@ -195,7 +278,9 @@ class Processor(DetectorAdapter):
                 elif kind == 'PERSON' and span in person_like:
                     tokens = L.name_tokens(span.text)
                     if L.identifying(tokens):
-                        if strong_leaf or span.confidence >= .95:
+                        if strong_leaf and _NAME_PART_KEY.search(key or ''):
+                            name_parts.append(tokens)          # FirstName / LastName / given / family columns
+                        elif strong_leaf or span.confidence >= .95:
                             if tokens not in strong:
                                 strong_order.append(tokens)
                             strong.add(tokens)
@@ -225,6 +310,9 @@ class Processor(DetectorAdapter):
             if VILLAGE_KEYS.search(key) and hint != '__district__':
                 self._places(evidence, stripped)
         self._collect_diagnoses(data)
+        for path_, text_, _ in self._leaves(data):
+            for m in _TWIN.finditer(text_):
+                evidence.twin = getattr(evidence, 'twin', set()) | {(m[1] or m[2]).lower()}
         if loc is None:
             return                      # export envelope: never a patient record
         evidence.ages = {(a, None) for a in evidence.ages}
@@ -235,6 +323,10 @@ class Processor(DetectorAdapter):
         # labelled name are other people (attendants, staff) and are ignored.
         # Several different *labelled* names -> we cannot tell whose record it is.
         evidence.relatives = {r for r in evidence.relatives if not any(L.compare_names(r, n) == 'full' for n in strong)}
+        if name_parts:
+            joined = tuple(t for part in name_parts for t in part)
+            strong.add(joined)
+            strong_order.append(joined)
         if len(strong) > 1 and all(len(n) == 1 for n in strong):
             # FirstName / LastName (or FHIR given/family) columns of one record.
             strong = {tuple(t for n in strong_order for t in n)}
@@ -281,23 +373,45 @@ class Processor(DetectorAdapter):
     def _places(self, evidence, text):
         for t in L.name_tokens(text):
             s = L.place_key(t)
-            if len(s) >= 4 and t not in PLACE_STOP and s not in _PLACE_STOP_KEYS:
+            if len(L.simplify(t)) >= 4 and t not in PLACE_STOP and s not in _PLACE_STOP_KEYS:
                 evidence.places.add(s)
+
+    def _order(self, file_id):
+        """Date order of a file; ambiguous files borrow it from files with the same letterhead."""
+        votes = self.file_order.get(file_id, Counter())
+        if votes['MDY'] != votes['DMY']:
+            return 'MDY' if votes['MDY'] > votes['DMY'] else 'DMY'
+        group = self.file_group.get(file_id)
+        if group:
+            pooled = Counter()
+            for f, g in self.file_group.items():
+                if g == group:
+                    pooled.update(self.file_order.get(f, Counter()))
+            if pooled['MDY'] > pooled['DMY']:
+                return 'MDY'
+        return 'DMY'
 
     # ------------------------------------------------------------ finish
     def finish(self):
         super().finish()
         for (file_id, _), ev in self.linker.records.items():
             ev.places -= self.regions
-            votes = self.file_order.get(file_id, Counter())
-            order = 'MDY' if votes['MDY'] > votes['DMY'] else 'DMY'
-            years = [int(d[:4]) for d in getattr(ev, 'iso_dates', [])] if order == 'DMY' else []
+            order = self._order(file_id)
+            dob_set = set(ev.dobs)
+            years = [int(d[:4]) for d in getattr(ev, 'iso_dates', []) if d not in dob_set] if order == 'DMY' else []
             for raw in getattr(ev, 'raw_dates', []):
                 value, _ = P.parse_numeric(raw, order)
-                if value:
+                if value and value.isoformat() not in dob_set and not any(value.isoformat()[4:] == d[4:] for d in dob_set):
                     years.append(value.year)
-            ref = max(years) if years else None      # latest event; DOB is the earliest date
+            ref = max(years) if years else None      # latest event date; a DOB is never the visit year
             ev.ages = {(a, ref) for a, _ in ev.ages}
+        # Learned full names also in slug form: "K. Venkatesh" -> k-venkatesh, k.venkatesh, k_venkatesh.
+        slugs = set()
+        for n in self.names:
+            toks = [t for t in re.split(r'[\s._-]+', n.strip()) if t]
+            if len(toks) >= 2 and sum(len(t) for t in toks) >= 6:
+                slugs.add(r'[\s._-]*'.join(re.escape(t) for t in toks))
+        self.slug_pattern = re.compile(r'(?<![^\W_])(?:' + '|'.join(sorted(slugs, key=lambda x: (-len(x), x))) + r')(?![^\W_])', re.I) if slugs else None
         names = sorted({v for v in self.district_values if len(v) >= 3}, key=lambda v: (-len(v), v))
         self.district_pattern = re.compile(r'(?<!\w)(?:' + '|'.join(re.escape(v) for v in names) + r')(?!\w)', re.I) if names else None
         self.assignment = self.linker.resolve()
@@ -370,7 +484,9 @@ class Processor(DetectorAdapter):
             'ids': self.cluster_ids.get(cid, set()),
             'shift': P.shift_days(self.secret, subject, self.config['shift_min_days'], self.config['shift_max_days']),
             'level': self.levels.get(sid, 0),
-            'order': 'MDY' if votes['MDY'] > votes['DMY'] else 'DMY',
+            'order': self._order(file_id),
+            'dobs': set(self.linker.cluster_evidence[cid].dobs) if cid is not None and cid in self.linker.cluster_evidence else
+                    set(getattr(self.linker.records.get(key), 'dobs', set()) or set()),
             'key': '',
             'placed': False,
         }
@@ -403,10 +519,54 @@ class Processor(DetectorAdapter):
         return value, None             # cannot embed safely -> do not claim a link
 
     # ------------------------------------------------------------ leaves
+    def _attachment(self, data, path, hint, depth):
+        """Attachments the strict adapter would reject: gzip-compressed text is
+        decompressed, cleaned and recompressed; anything else we cannot read
+        safely (images, PDFs, unknown binaries) loses its data, which FHIR
+        allows (Attachment.data is optional), instead of stopping the run."""
+        import base64
+        import binascii
+        import gzip
+        mime = str(data.get('contentType', '')).split(';', 1)[0].strip().casefold()
+        rest = {k: v for k, v in data.items() if k != 'data'}
+        cleaned = super()._value(rest, path, hint, depth) if rest else {}
+        try:
+            raw = base64.b64decode(data['data'], validate=True)
+            if mime in ('application/gzip', 'application/x-gzip') or raw[:2] == b'\x1f\x8b':
+                text = gzip.decompress(raw).decode('utf-8')
+                if len(text) > 1000000:
+                    raise ValueError
+                cleaned['data'] = base64.b64encode(gzip.compress(self._text(text, '').encode(), mtime=0)).decode('ascii')
+                self.entities['ATTACHMENT'] += 1
+                return cleaned
+        except (ValueError, UnicodeError, binascii.Error, OSError, EOFError):
+            pass
+        self.entities['ATTACHMENT_REMOVED'] += 1
+        return cleaned
+
     def _value(self, data, path=(), hint='', depth=0):
+        if (self._ctx is not None and isinstance(data, dict) and isinstance(data.get('url'), str)
+                and _PERSON_URL.search(data['url']) and any(k.startswith('value') and isinstance(v, str) for k, v in data.items())):
+            # FHIR extension carrying a person (mother's maiden name, informant ...).
+            rest = {k: v for k, v in data.items() if not (k.startswith('value') and isinstance(v, str))}
+            cleaned = super()._value(rest, path, hint, depth)
+            for k, v in data.items():
+                if k.startswith('value') and isinstance(v, str):
+                    self._ctx['key'] = k
+                    cleaned[k] = self._text(v, 'relative')
+            return {k: cleaned[k] if k in cleaned else cleaned.get(self._key(k)) for k in data if k in cleaned or self._key(k) in cleaned}
+        if (self._ctx is not None and isinstance(data, dict) and isinstance(data.get('data'), str)
+                and ('contentType' in data or 'attachment' in path or data.get('encoding') == 'base64')
+                and str(data.get('contentType', '')).split(';', 1)[0].strip().casefold() != 'text/plain'):
+            return self._attachment(data, path, hint, depth)
         if self._ctx is not None and (isinstance(data, str) or (isinstance(data, (int, float)) and not isinstance(data, bool))):
             self._ctx['key'] = path[-1] if path else ''
             if isinstance(data, str):
+                if path and (_PATH_KEY.search(path[-1]) and re.search(r'[/\\]', data)):
+                    self.entities['METADATA'] += 1
+                    return '[SOURCE_PATH]'           # export/source paths often embed a user's name
+                if path and _BY_KEY.search(path[-1]):
+                    return self._text(data, 'relative')   # exported_by / entered_by / uploaded_by: a person
                 if path and path[-1].casefold() in {'source_path', 'sourcepath', 'filepath', 'file_path'}:
                     self.entities['METADATA'] += 1
                     return '[SOURCE_PATH]'
@@ -415,6 +575,10 @@ class Processor(DetectorAdapter):
             if any(s.entity_type in DIRECT for s in spans):
                 self.entities['NUMERIC_ID'] += 1
                 return 0 if isinstance(data, int) else 0.0
+            if isinstance(data, int) and any(s.entity_type == 'PINCODE' for s in spans):
+                self.entities['PINCODE'] += 1
+                self._generalized_record = True
+                return P.generalize_pin(str(data), self._ctx['level'], self.config)
             if isinstance(data, int) and any(s.entity_type == 'AGE' and s.start == 0 and s.end == len(str(data)) for s in spans):
                 self.entities['AGE'] += 1
                 self._generalized_record = True
@@ -442,7 +606,7 @@ class Processor(DetectorAdapter):
         "Zainab") that the context detector missed. Doctors and clinical terms
         are protected exactly as in detection."""
         names = self._ctx['names'] if self._ctx else ()
-        if not names or hint == '__clinical__':
+        if not names:
             return spans
         wanted = {L.simplify(t) for n in names for t in L.identifying(n) if len(t) >= 3}
         if not wanted:
@@ -464,6 +628,23 @@ class Processor(DetectorAdapter):
                 extra.append(EntitySpan(m.start(), m.start() + len(word), 'PERSON', word, word.casefold(), 'PSEUDONYMIZE', .9))
         return resolve(list(spans) + extra) if extra else spans
 
+    @staticmethod
+    def _resolves_to(text, order):
+        from detector import detect_text as _dt
+        return {s.normalized for s in _dt(text).spans if s.entity_type in ('DATE', 'DOB')} | \
+            ({P.parse_numeric(text, order)[0].isoformat()} if P.parse_numeric(text, order)[0] else set())
+
+    def _clean_data_uri(self, m):
+        import base64
+        import binascii
+        try:
+            body = base64.b64decode(m[2], validate=True).decode('utf-8')
+        except (binascii.Error, ValueError, UnicodeError):
+            self.entities['ATTACHMENT_REMOVED'] += 1
+            return m[1] + ';base64,'                       # unreadable payload: drop it
+        self.entities['ATTACHMENT'] += 1
+        return m[1] + ';base64,' + base64.b64encode(self._text(body, '').encode()).decode('ascii')
+
     def _is_patient_name(self, text):
         tokens = L.name_tokens(text)
         if not L.identifying(tokens):
@@ -473,6 +654,8 @@ class Processor(DetectorAdapter):
     def _text(self, text, hint):
         if self._ctx is None:
             return super()._text(text, hint)
+        if 'base64,' in text:
+            text = _DATA_URI.sub(lambda m: self._clean_data_uri(m), text)
         ctx = self._ctx
         level = ctx['level']
         if hint == '__district__':
@@ -507,6 +690,8 @@ class Processor(DetectorAdapter):
                 replacement = '[' + kind + ']'
             elif kind == 'DATE':
                 shifted = P.shift_text_date(span.text, ctx['shift'], ctx['order'])
+                if shifted is not None and ctx.get('dobs') and self._resolves_to(shifted, ctx['order']) & ctx['dobs']:
+                    shifted = '[DATE]'                     # a shifted date must never equal the real DOB
                 replacement = shifted if shifted is not None else '[DATE]'
                 self._generalized_record = True
             elif kind == 'DOB':
@@ -520,8 +705,14 @@ class Processor(DetectorAdapter):
                 self._generalized_record = True
             elif kind == 'LOCATION':
                 replacement = '[LOCATION]'
-                if level < 3:
-                    kept = [v for v in sorted(self.district_values) if re.search(r'(?<!\w)' + re.escape(v) + r'(?!\w)', span.text, re.I)]
+                if level < 3 and not VILLAGE_KEYS.search(ctx['key'] or ''):
+                    # keep a district name only where it is written as the district
+                    # ("Distt. Sitapur"), never a village that shares the name ("Gram Sitapur")
+                    marker = r'(?:dist(?:t|rict)?\.?|jila|zila|janpad|जिला|ज़िला|जनपद)\s*[:.-]?\s*'
+                    kept = [v for v in sorted(self.district_values)
+                            if re.search(r'(?i)' + marker + re.escape(v) + r'(?!\w)', span.text)
+                            or (hint == 'address' and re.fullmatch(r'(?i)\s*' + re.escape(v) + r'\s*', span.text) is None
+                                and re.search(r'(?<!\w)' + re.escape(v) + r'\s*$', span.text) and ',' in span.text)]
                     if kept:
                         replacement += ' ' + ', '.join(kept)
                 self._generalized_record = True

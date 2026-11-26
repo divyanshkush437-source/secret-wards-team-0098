@@ -166,7 +166,8 @@ _GENERIC_SIMPLE = {simplify(t) for t in GENERIC}
 def place_key(token: str) -> str:
     """Spelling-tolerant key for village/locality tokens (schwa + vowel folding)."""
     s = simplify(token)
-    return re.sub(r'(?<=[^aeiou])a(?=[^aeiou])', '', s)
+    s = re.sub(r'(?<=[^aeiou])a(?=[^aeiou])', '', s)
+    return re.sub(r'(.)\1+', r'\1', s)          # "chandadeeh" -> knddi -> kndi
 
 
 def phonetic_key(token: str) -> str:
@@ -317,6 +318,8 @@ class Evidence:
     def merge(self, other: 'Evidence') -> None:
         for name in ('names', 'relatives', 'ids', 'phones', 'dobs', 'ages', 'genders', 'places', 'districts', 'codes'):
             getattr(self, name).update(getattr(other, name))
+        if getattr(other, 'twin', None):
+            self.twin = getattr(self, 'twin', set()) | other.twin
 
 
 def _birth_years(ev: Evidence) -> set:
@@ -330,7 +333,10 @@ def _birth_years(ev: Evidence) -> set:
 def conflict(a: Evidence, b: Evidence) -> bool:
     if a.genders and b.genders and not (a.genders & b.genders):
         return True
-    if a.dobs and b.dobs and not (a.dobs & b.dobs):
+    ta, tb = getattr(a, 'twin', set()), getattr(b, 'twin', set())
+    if ta and tb and not (ta & tb):
+        return True                      # "Twin 1" and "Twin 2" are never the same baby
+    if a.dobs and b.dobs and not (a.dobs & b.dobs) and not _same_dob_any_century(a.dobs, b.dobs):
         return True
     ya, yb = _birth_years(a), _birth_years(b)
     if ya and yb and min(abs(x - y) for x in ya for y in yb) > 2:
@@ -342,8 +348,19 @@ def conflict(a: Evidence, b: Evidence) -> bool:
     full_b = [n for n in b.names if len(identifying(n)) >= 2]
     ok = RELAXED_OK if a.ids & b.ids else None
     if full_a and full_b and not any(compare_names(x, y, ok) in ('full', 'partial') for x in full_a for y in full_b):
-        return True
+        # A surname can change at marriage: same first name plus a shared phone,
+        # ID or husband's name is still the same person.
+        tied = (a.ids & b.ids) or (a.phones & b.phones) or (a.relatives and b.relatives and _best_name(a.relatives, b.relatives) == 'full')
+        same_first = any(token_match(x[0], y[0]) >= TOKEN_OK for x in full_a for y in full_b if x and y) or \
+            any(set(identifying(x)) & set(identifying(y)) for x in full_a for y in full_b)
+        if not (tied and same_first):
+            return True
     return False
+
+
+def _same_dob_any_century(da, db):
+    """'29.02.24' may be 1924 or 2024: equal day, month and two-digit year count as one DOB."""
+    return any(x[4:] == y[4:] and x[2:4] == y[2:4] for x in da for y in db)
 
 
 def _best_name(a: set, b: set, ok: float = None) -> str:
@@ -373,8 +390,13 @@ def score(a: Evidence, b: Evidence) -> int:
     name = _best_name(a.names, b.names, RELAXED_OK if a.ids & b.ids else None) if a.names and b.names else 'none'
     if name in WEIGHTS:
         s += WEIGHTS[name]
-    if a.relatives and b.relatives and _best_name(a.relatives, b.relatives) in ('full', 'partial'):
+    rel = _best_name(a.relatives, b.relatives) if a.relatives and b.relatives else 'none'
+    if rel in ('full', 'partial'):
         s += WEIGHTS['relative']
+    elif rel == 'conflict' and not (a.ids & b.ids) and not (a.phones & b.phones):
+        s -= 6                           # a different father/husband: almost surely a different person
+    if a.phones and b.phones and not (a.phones & b.phones) and not (a.ids & b.ids):
+        s -= 2
     if a.dobs & b.dobs:
         s += WEIGHTS['dob']
     if a.ages and b.ages and not conflict(Evidence(ages=a.ages), Evidence(ages=b.ages)):

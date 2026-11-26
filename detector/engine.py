@@ -110,7 +110,7 @@ def detect_text(text: str, field_hint: str = '', policy_path: str | None = None)
         norm=p.normalize_timestamp_date(m[0])
         if norm:
             add(*m.span('date'),_date_kind(text,m.start(),field_hint),norm)
-    for pattern in (p.NUM_DATE, p.TEXT_DATE):
+    for pattern in (p.NUM_DATE, p.TEXT_DATE, p.HINDI_DATE, p.ORD_DATE, p.NOYEAR_DATE):
         for m in pattern.finditer(text):
             norm = p.normalize_date(m[0], policy['two_digit_year_pivot'], date_order)
             if norm:

@@ -4,6 +4,8 @@ The optional spaCy Matcher is a cached trigger accelerator, never an NER model.
 import re
 from functools import lru_cache
 from .medical_whitelist import blocked_word
+KINSHIP = {'bhaiya', 'bhaiyya', 'bhai', 'didi', 'behenji', 'bhabhi', 'chacha', 'chachi', 'chachu', 'mama', 'mami', 'mausi',
+           'bua', 'papa', 'dada', 'dadi', 'nana', 'nani', 'amma', 'baba', 'भैया', 'बहन', 'दीदी'}
 TOKEN = re.compile(r"[A-Za-z\u0900-\u0963\u0971-\u097f]+(?:['’-][A-Za-z\u0900-\u0963\u0971-\u097f]+)*\.?", re.UNICODE)
 
 @lru_cache(maxsize=16)
@@ -40,7 +42,7 @@ def read_name(text, start, honorifics, allow_lower=False):
             break
         if not allow_lower and not is_name_token(m[0]):
             break
-        if re.match(r'(?i)[sdwck]/\s*o\b', text[m.start():m.start() + 5]):
+        if re.match(r'(?i)[sdwckb]/\s*o\b', text[m.start():m.start() + 5]):
             break                       # S/o, D/o, W/o, C/o, K/C/O start a new phrase
         # After a capitalised first token, a lowercase word ends the name
         # ("W/o Kamal, discharged in ..."); all-lowercase names still work.
@@ -79,7 +81,8 @@ def name_candidates(text, policy, field_hint=''):
                 break
         if selected and m[0].strip(' :=-').casefold() in {'s/o', 'd/o', 'w/o', 'son of', 'daughter of', 'wife of', 'husband of'}:
             candidates.append((selected[-1].start(), selected[0].end(), 'PERSON', .9))
-    for m in marker_matches(text, ['patient', 'patient name', 'name', 'नाम', 'मरीज', 'रोगी']):
+    for m in marker_matches(text, ['patient', 'patient name', 'name', 'नाम', 'मरीज', 'रोगी', 'naam', 'rogi ka naam', 'mareez ka naam',
+                                   'name of patient', 'name of the patient', "patient's name", 'pt', 'pt.', 'pt name', 'मरीज़ का नाम', 'रोगी का नाम']):
         span = read_name(text, m.end(), honor, ':' in m[0] or '=' in m[0])
         if span:
             candidates.append((*span, 'PERSON', .95))
@@ -102,7 +105,23 @@ def name_candidates(text, policy, field_hint=''):
                 if len(selected) == 4:
                     break
             if selected:
-                candidates.append((selected[-1].start(), selected[0].end(), 'PERSON', .90))
+                # Kinship forms ("Kamal Bhaiya", "Raju Papa") are part of how the person is named.
+                end = m.start() + len(m[0].rstrip(' :=-')) if word in KINSHIP else selected[0].end()
+                candidates.append((selected[-1].start(), end, 'PERSON', .90))
+    # Nicknames: "(alias Pinky)", "urf Guddu", "a.k.a. Bittu", "उर्फ़ पप्पू"
+    for m in re.finditer(r'(?i)(?<![\w])(?:alias|urf|aka|a\.k\.a\.?|known as|उर्फ़|उर्फ)\s*[:=-]?\s*', text):
+        span = read_name(text, m.end(), honor, True)
+        if span:
+            candidates.append((*span, 'PERSON', .93))
+        before = list(TOKEN.finditer(text, max(0, m.start() - 60), m.start()))
+        run, end = [], m.start()
+        for token in reversed(before):                                  # "Guddu urf Suresh": both are names
+            if text[token.end():end].strip(' ,(-') or not is_name_token(token[0]) or len(run) == 4:
+                break
+            run.append(token)
+            end = token.start()
+        if run:
+            candidates.append((run[-1].start(), run[0].end(), 'PERSON', .9))
     hint = re.sub(r'[_-]+', ' ', field_hint).casefold()
     if hint in {'name','patient','patient name','given','family','नाम','मरीज'}:
         span = read_name(text, len(text)-len(text.lstrip()), honor, True)

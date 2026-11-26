@@ -31,7 +31,11 @@
     "bua",
     "baba",
     "bibi",
-    "bhaiyaji"
+    "bhaiyaji",
+    "papa",
+    "chachu",
+    "mama",
+    "mami"
   ],
   "relationship_markers": [
     "S/o",
@@ -49,7 +53,10 @@
     "पुत्र",
     "पुत्री",
     "पत्नी",
-    "पति"
+    "पति",
+    "B/O",
+    "Baby of",
+    "baby of"
   ],
   "doctor_prefixes": [
     "Dr",

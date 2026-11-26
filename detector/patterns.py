@@ -8,11 +8,18 @@ except ImportError:
 
 EMAIL = re.compile(r'(?<![\w.+-])[\w.+-]+@[\w-]+(?:\.[\w-]+)+', re.UNICODE)
 PAN = re.compile(r'(?<!\w)[A-Z]{5}[0-9]{4}[A-Z](?!\w)')
-AADHAAR = re.compile(r'(?<![\w\d])\d{4}[ -]?\d{4}[ -]?\d{4}(?![\w\d])')
+AADHAAR = re.compile(r'(?<![\w\d+])\d{4}[ -]?\d{4}[ -]?\d{4}(?![\w\d])')   # "+91…" is a phone, not Aadhaar
 ABHA = re.compile(r'(?<![\w\d])\d{2}[ -]?\d{4}[ -]?\d{4}[ -]?\d{4}(?![\w\d])')
 PHONE = re.compile(r'(?<!\w)(?:(?:\+91[ .-]?|0)?[6-9६-९]\d{4}[ .-]?\d{5}|\(0\d{2,4}\)[ .-]?\d{6,8}|0\d{2,4}-\d{6,8})(?!\w)'
                    r'|\(\s*(?:\+?91[ -]?)?[6-9]\d{4}\s*\)[ .-]?\d{5}(?!\w)')   # "(73036) 71330"
-NUM_DATE = re.compile(r'(?<![\w/.-])(?:\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[-/]\d{1,2}[-/](?:\d{4}|\d{2})|\d{1,2}\.\d{1,2}\.\d{4}|\d{4}\.\d{1,2}\.\d{1,2})(?![\w/-]|\.\d)')
+NUM_DATE = re.compile(r'(?<![\w/.-])(?:\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[-/]\d{1,2}[-/](?:\d{4}|\d{2})|\d{1,2}\.\d{1,2}\.\d{4}|\d{4}\.\d{1,2}\.\d{1,2}|(?:0?[1-9]|[12]\d|3[01])\.(?:0?[1-9]|1[0-2])\.\d{2})(?![\w/-]|\.\d)')
+HI_MONTHS = ['जनवरी', 'फ़रवरी', 'मार्च', 'अप्रैल', 'मई', 'जून', 'जुलाई', 'अगस्त', 'सितंबर', 'अक्टूबर', 'नवंबर', 'दिसंबर']
+HI_MONTH_ALT = {'फरवरी': 2, 'सितम्बर': 9, 'नवम्बर': 11, 'दिसम्बर': 12, 'अक्तूबर': 10, 'अप्रेल': 4}
+_HI = '|'.join(sorted({re.escape(m) for m in HI_MONTHS} | {re.escape(m) for m in HI_MONTH_ALT}, key=len, reverse=True))
+HINDI_DATE = re.compile(r'(?<![\w\u0900-\u097f])\d{1,2}\s*(?:' + _HI + r')[,\s]*\d{4}(?![\w\u0900-\u097f])')
+# "7 March" / "5 Jan" with no year (short notes): shifted assuming the reference year.
+NOYEAR_DATE = re.compile(r"(?<![\w/.-])(?:0?[1-9]|[12]\d|3[01])\s+(?:January|February|March|April|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\b(?![\s,'-]*\d)")
+ORD_DATE = re.compile(r"(?<!\w)\d{1,2}(?:st|nd|rd|th)\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?,?\s+(?:'\d{2}|\d{4})(?!\w)", re.I)
 TEXT_DATE = re.compile(r'(?<!\w)\d{1,2}(?:\s+|-)(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)(?:\s+|-)\d{4}(?!\w)', re.I)
 ID_LABEL = re.compile(r'\b(?:UHID|MRN|IPD|OPD|Reg(?:istration)?\s*(?:No\.?)?|Insurance(?:\s*(?:ID|No\.?))?|Policy\s*(?:ID|No\.?))\s*[:=#-]?\s*([A-Za-z0-9][A-Za-z0-9/-]{1,39})\b', re.I)
 PIN = re.compile(r'(?<!\d)[1-9]\d{5}(?!\d)')
@@ -39,6 +46,31 @@ def normalize_phone(text):
     return '+91' + national
 
 def normalize_date(value, pivot=30, order="DMY"):
+    m = re.fullmatch(r'(\d{1,2})\s*([\u0900-\u097f\u093c]+)[,\s]*(\d{4})', value.strip())
+    if m:
+        name = m[2]
+        month = HI_MONTHS.index(name) + 1 if name in HI_MONTHS else HI_MONTH_ALT.get(name)
+        try:
+            return date(int(m[3]), month, int(m[1])).isoformat() if month else None
+        except (ValueError, TypeError):
+            return None
+    ny = re.fullmatch(r"(\d{1,2})\s+([A-Za-z]{3})[a-z]*", value.strip())
+    if ny:
+        months = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec']
+        try:
+            return date(2026, months.index(ny[2].lower()) + 1, int(ny[1])).isoformat()
+        except ValueError:
+            return None
+    o = re.fullmatch(r"(\d{1,2})(?:st|nd|rd|th)\s+([A-Za-z]{3})[a-z]*\.?,?\s+'?(\d{2}|\d{4})", value.strip())
+    if o:
+        months = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec']
+        try:
+            y = int(o[3])
+            if y < 100:
+                y += 2000 if y <= pivot else 1900
+            return date(y, months.index(o[2].lower()) + 1, int(o[1])).isoformat()
+        except ValueError:
+            return None
     try:
         pieces = re.split(r'[-/.\s]+', value.strip())
         if pieces[1].isalpha():
