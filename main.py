@@ -104,11 +104,16 @@ def main():
     parser.add_argument("--input", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--demo", action="store_true")
+    parser.add_argument("--detector-only", action="store_true", help="Member 2 integration run; no linkage or date shifting")
     args = parser.parse_args()
     secret = os.environ.get("RAKSHA_SECRET", "").encode()
     if not secret:
         parser.exit(2, "Set RAKSHA_SECRET before running.\n")
-    if args.demo:
+    if args.demo and args.detector_only:
+        parser.exit(2, "Choose only one processor mode.\n")
+    if args.detector_only:
+        from member2_processor import Processor
+    elif args.demo:
         from demo_processor import DemoProcessor as Processor
     else:
         try:
