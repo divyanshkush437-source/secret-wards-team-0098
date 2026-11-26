@@ -1,5 +1,12 @@
 # Member 3: linkage, pseudonyms, privacy layer and red-team
 
+Current continuation: [27 November evaluation](docs/evaluation-2026-11-27/README.md).
+The tables and policy experiments below are historical, not current acceptance results.
+The current default keeps districts and disease names (`max_level: 2`,
+`rare_name_max_patients: 0`); historical descriptions of removal below apply to earlier
+experiments. Consult `config/privacy.json` and the latest evaluation for current behavior.
+
+
 | File | Role |
 |---|---|
 | `linker.py` | Devanagari→Latin transliteration, name folding, Jaro-Winkler, blocking, scoring, conflict-safe clustering |
@@ -59,7 +66,7 @@ prefix filters, the order the kit's ATTACKS.md documents):
 | Raw input | 10 / 48 | 11 / 746 | – |
 | Fixed 5-year bands | 9 / 50 | – | 3 |
 | Fixed 10-year bands | 5 / 50 | 4 / 746 | 3 |
-| Adaptive (current) | **0 / 48** | **0 / 746** | 47 / 93 |
+| Adaptive (historical) | **0 / 48** | **0 / 746** | 47 / 93 |
 
 Targeted attack (ATTACKS.md A5: known visit date, hospital, condition, stay length,
 global-shift recovery): 4 of 14 known people at ≥ 0.5 (raw input 2 of 14), 0 decoys

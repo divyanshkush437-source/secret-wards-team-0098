@@ -346,6 +346,45 @@ class HiddenFormatTests(unittest.TestCase):
 
 
 class RobustnessTests(unittest.TestCase):
+    def test_every_yearless_month_is_shifted(self):
+        for month in ('Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug',
+                      'Sep', 'Oct', 'Nov', 'Dec'):
+            with self.subTest(month=month):
+                text = 'Patient Name: Mira Rao\nVisit: 10 ' + month + '\nDolo 650 BD x 5 days'
+                p = Processor(b'yearless-regression')
+                p.observe('f', 'doc', text)
+                p.finish()
+                cleaned, _ = p.clean('f', 'doc', text)
+                self.assertNotIn('Visit: 10 ' + month, cleaned)
+                self.assertIn('Dolo 650 BD x 5 days', cleaned)
+
+    def test_quarantined_file_does_not_inflate_counters(self):
+        from collections import Counter
+        class FailingProcessor:
+            def __init__(self):
+                self.entities = Counter()
+                self.generalized = 0
+            def observe(self, *args):
+                pass
+            def finish(self):
+                pass
+            def clean(self, name, loc, data):
+                self.entities['PERSON'] += 1
+                self.generalized += 1
+                if 'bad' in data:
+                    raise ValueError('synthetic failure')
+                return '[PERSON]', None
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder) / 'input'
+            root.mkdir()
+            (root / 'a.txt').write_text('bad')
+            (root / 'b.txt').write_text('good')
+            report = run(root, Path(folder) / 'out', FailingProcessor(), b'k')
+            self.assertEqual(report['counts']['files_quarantined'], 1)
+            self.assertEqual(report['counts']['identifiers_detected'], 1)
+            self.assertEqual(report['counts']['records_generalized'], 1)
+            self.assertEqual(report['counts']['records_processed'], 1)
+
     def test_one_bad_file_is_quarantined_not_fatal(self):
         import gzip
         with tempfile.TemporaryDirectory() as folder:

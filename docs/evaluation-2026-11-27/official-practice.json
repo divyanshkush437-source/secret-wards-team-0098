@@ -1,0 +1,91 @@
+{
+  "linkage": {
+    "pair_precision": 1.0,
+    "pair_recall": 1.0,
+    "F0.5": 1.0,
+    "linkable_pairs": 6892,
+    "predicted_pairs": 6919,
+    "homonym_pairs_separated": "2/2",
+    "units_claimed": 773,
+    "units_total": 815
+  },
+  "leaks": {
+    "leaked_over_mentions": {
+      "AADHAAR": "0/71",
+      "EMAIL": "0/1",
+      "HOUSE": "0/136",
+      "LOCALITY": "0/103",
+      "MRN": "0/848",
+      "PAN": "0/22",
+      "PATIENT_NAME": "3/962",
+      "PHONE": "0/308",
+      "RELATIVE_NAME": "0/232",
+      "VILLAGE": "0/150",
+      "script:deva": "0/135",
+      "script:hinglish": "2/111",
+      "script:latin": "1/2587"
+    },
+    "canary_in_report": 0
+  },
+  "dates": {
+    "date_pairs_interval_kept_and_shifted": "24/24"
+  },
+  "utility": {
+    "clinical_probes_kept": "4855/4855",
+    "lost_by_kind": {}
+  },
+  "attack": {
+    "records_attacked": 746,
+    "record_mean_true_person_probability": 0.0132,
+    "records_reidentified_conf>=0.5": 0,
+    "profiles_attacked": 48,
+    "profile_mean_true_person_probability": 0.0874,
+    "profiles_reidentified_conf>=0.5": 1
+  },
+  "targeted_attack": {
+    "known_people": 14,
+    "mean_success_probability": 0.3571,
+    "identified_conf>=0.5": 6,
+    "global_shift_recovered": true,
+    "decoys_claimed": 0
+  },
+  "kit_selfcheck": {
+    "pii_leaked": "0/3230",
+    "leaked_by_type": {
+      "AADHAAR": "0/71",
+      "AADHAAR_MASKED": "0/16",
+      "ABHA_NUMBER": "0/46",
+      "DOB": "0/111",
+      "EMAIL": "0/1",
+      "HOUSE": "0/136",
+      "INSURANCE_ID": "0/22",
+      "LANDMARK": "0/64",
+      "LOCALITY": "0/103",
+      "MRN": "0/850",
+      "PAN": "0/22",
+      "PATIENT_NAME": "0/962",
+      "PHONE": "0/308",
+      "PIN": "0/136",
+      "RELATIVE_NAME": "0/232",
+      "VILLAGE": "0/150"
+    },
+    "leaked_by_script": {
+      "deva": "0/143",
+      "hinglish": "0/111",
+      "latin": "0/2976"
+    },
+    "leaked_by_channel": {
+      "base64": "0/10",
+      "content": "0/3112",
+      "filename": "0/48",
+      "header": "0/8",
+      "key": "0/12",
+      "metadata": "0/40"
+    },
+    "canaries_found": "0/4",
+    "medical_kept": "4855/4855",
+    "medical_lost_by_kind": {},
+    "raw_copies": 0,
+    "examples": []
+  }
+}

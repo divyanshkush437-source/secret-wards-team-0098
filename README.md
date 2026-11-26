@@ -8,7 +8,7 @@ during the event. The 2-page brief is [Project_Brief.pdf](Project_Brief.pdf).
 
 ```sh
 python3 -m pip install -r requirements.txt     # optional; core is standard library only
-python3 -m unittest -q                         # 181 tests
+python3 -m unittest -q                         # 189 tests
 python3 contract_check.py --input INPUT --output OUTPUT   # official format rules + stricter checks
 # RAKSHA_SECRET must already be set privately in your environment.
 python3 main.py --input /path/to/input --output /path/to/fresh_output
@@ -21,7 +21,16 @@ The normal command (also in raksha.toml) runs the full pipeline through
 - Member 2's detector, run instructions and integration contract: [MEMBER2.md](MEMBER2.md).
 - Member 3's linkage, pseudonyms, privacy layer and red-team results: [MEMBER3.md](MEMBER3.md).
 
-## Practice results (official kit `dev/`, measured with `test_attacker.py`)
+## Latest continuation and held-out evaluation
+
+See [the 27 November evaluation](docs/evaluation-2026-11-27/README.md) for the current
+fixes, protocol, aggregate JSON and remaining privacy limitations. New held-out synthetic
+data scored **98.08/100 on the practice approximation**, with 0/5,760 labelled identifier
+leaks, 3,794/3,794 clinical probes preserved and linkage precision/recall 1.000.
+This is not a universal accuracy claim; the targeted attacker still identified 7/36 people.
+The official submission checks and 189 unit tests pass. This work tuned rules, not a model.
+
+## Historical practice results (official kit `dev/`, measured with `test_attacker.py`)
 
 | Measure | Result |
 |---|---|
