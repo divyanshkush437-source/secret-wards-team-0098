@@ -1,0 +1,72 @@
+{
+  "honorifics": [
+    "ji",
+    "sahab",
+    "saheb",
+    "didi",
+    "bhai",
+    "babu",
+    "shri",
+    "smt",
+    "kumari",
+    "devi",
+    "जी",
+    "साहब",
+    "श्री",
+    "श्रीमती",
+    "behenji",
+    "amma",
+    "भैया",
+    "बहन"
+  ],
+  "relationship_markers": [
+    "S/o",
+    "D/o",
+    "W/o",
+    "C/o",
+    "son of",
+    "daughter of",
+    "wife of",
+    "husband of",
+    "guardian",
+    "attendant",
+    "next of kin",
+    "पिता",
+    "पुत्र",
+    "पुत्री",
+    "पत्नी",
+    "पति"
+  ],
+  "doctor_prefixes": [
+    "Dr",
+    "Dr.",
+    "Doctor",
+    "डॉ",
+    "डॉ."
+  ],
+  "enabled_ids": {
+    "AADHAAR": true,
+    "ABHA": true,
+    "PAN": true,
+    "UHID": true
+  },
+  "two_digit_year_pivot": 30,
+  "max_text_length": 1000000,
+  "bare_name_detection": true,
+  "actions": {
+    "PERSON": "PSEUDONYMIZE",
+    "RELATIVE": "REDACT",
+    "PHONE": "REDACT",
+    "EMAIL": "REDACT",
+    "ID_AADHAAR": "REDACT",
+    "ID_ABHA": "REDACT",
+    "ID_PAN": "REDACT",
+    "ID_UHID": "REDACT",
+    "DATE": "DATE_SHIFT",
+    "DOB": "DATE_SHIFT",
+    "AGE": "GENERALIZE",
+    "GENDER": "KEEP_META",
+    "LOCATION": "GENERALIZE",
+    "PINCODE": "GENERALIZE"
+  }
+}
