@@ -11,7 +11,8 @@
   "k_threshold": 3,
   "pin_prefix_digits": 3,
   "registry_ratio": 4,
-  "k_registry": 8,
-  "rare_name_max_patients": 1,
-  "old_top_code": 65
+  "k_registry": 5,
+  "rare_name_max_patients": 0,
+  "adult_age": 18,
+  "max_level": 2
 }

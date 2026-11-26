@@ -476,7 +476,7 @@ class Processor(DetectorAdapter):
         ctx = self._ctx
         level = ctx['level']
         if hint == '__district__':
-            if level >= 2 and text.strip():
+            if level >= 3 and text.strip():
                 self.entities['DISTRICT'] += 1
                 self._generalized_record = True
                 return '[DISTRICT]'
@@ -520,7 +520,7 @@ class Processor(DetectorAdapter):
                 self._generalized_record = True
             elif kind == 'LOCATION':
                 replacement = '[LOCATION]'
-                if level < 2:
+                if level < 3:
                     kept = [v for v in sorted(self.district_values) if re.search(r'(?<!\w)' + re.escape(v) + r'(?!\w)', span.text, re.I)]
                     if kept:
                         replacement += ' ' + ', '.join(kept)
@@ -534,7 +534,7 @@ class Processor(DetectorAdapter):
             if count:
                 self.entities['RARE_DIAGNOSIS'] += count
                 self._generalized_record = True
-        if level >= 2 and self.district_pattern is not None:
+        if level >= 3 and self.district_pattern is not None:
             # High-risk patients: letterheads such as "Hospital, Barabanki" or
             # "Labs (Lucknow)" would otherwise reveal the home district.
             result, count = self.district_pattern.subn('[DISTRICT]', result)

@@ -16,7 +16,7 @@ NUM_DATE = re.compile(r'(?<![\w/.-])(?:\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[-/]\d
 TEXT_DATE = re.compile(r'(?<!\w)\d{1,2}(?:\s+|-)(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)(?:\s+|-)\d{4}(?!\w)', re.I)
 ID_LABEL = re.compile(r'\b(?:UHID|MRN|IPD|OPD|Reg(?:istration)?\s*(?:No\.?)?|Insurance(?:\s*(?:ID|No\.?))?|Policy\s*(?:ID|No\.?))\s*[:=#-]?\s*([A-Za-z0-9][A-Za-z0-9/-]{1,39})\b', re.I)
 PIN = re.compile(r'(?<!\d)[1-9]\d{5}(?!\d)')
-AGE = re.compile(r'(?i)(?:\b(?:age|उम्र|आयु)\s*[:=-]?\s*(?P<label>\d{1,3})(?!\d)|(?<![\w.])(?P<years>\d{1,3})\s*(?:yrs?\b|years?\b|वर्ष)|(?<![\w.])(?P<compact>\d{1,3})(?=\s*/?\s*[MF]\b))')
+AGE = re.compile(r'(?i)(?:\b(?:age|उम्र|आयु)\s*[:=-]?\s*(?P<label>\d{1,3})(?!\d)|(?<![\w.])(?P<years>\d{1,3})\s*(?:yrs?\b|years?\b|वर्ष|Y(?=\s*/\s*[MF]\b))|(?<![\w.])(?P<compact>\d{1,3})(?=\s*/?\s*[MF]\b))')
 GENDER = re.compile(r'(?i)(?<![\w\u0900-\u097f])(?:male|female|महिला|पुरुष)(?![\w\u0900-\u097f])|(?<![\w.])\d{1,3}\s*/?\s*(?P<compact_gender>[MF])\b')
 
 def digits(text):

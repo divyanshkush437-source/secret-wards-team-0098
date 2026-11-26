@@ -32,3 +32,9 @@ CLINICAL.append(re.compile(r'\bH/O\s+[A-Za-z0-9 /]+?\s+\d+\s+yrs?\s+back\b', re.
 
 # Hindi document headings and form labels (structural words, not names).
 STOPWORDS.update("डिस्चार्ज सारांश पर्चा ओपीडी आईपीडी रिपोर्ट मरीज़ मरीज रोगी नाम पता आयु उम्र लिंग निदान दवा दवाई सलाह जांच परीक्षण भर्ती छुट्टी तारीख दिनांक पंजीकरण अस्पताल वार्ड बिस्तर डॉक्टर चिकित्सक नर्सिंग नोट्स समरी इलाज उपचार सं संख्या मोबाइल".split())
+
+# A phrase directly before an ICD-10 code in brackets, or after a diagnosis
+# label, is a diagnosis in any script ("जापानी इंसेफेलाइटिस (A83.0)").
+CLINICAL.append(re.compile(r"[A-Za-z\u0900-\u097f][A-Za-z\u0900-\u097f '’,-]{1,60}?(?=\s*\(\s*[A-TV-Z]\d{2}(?:\.\d{1,2})?\s*\))"))
+CLINICAL.append(re.compile(r"(?i)(?:निदान|रोग|बीमारी|diagnosis|diagnosed with|treated for|dx)\s*[:-]?\s*[^\n(;:]{2,60}"))
+STOPWORDS.update("vitamin calcium iron zinc folic folate magnesium potassium sodium b12 d3".split())

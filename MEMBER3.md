@@ -84,16 +84,19 @@ removed, linkage recall 65-68%, 2 of 4 canaries leaked. After the fixes in this 
 | Canaries | 0 / 4 | 0 / 4 |
 | Linkage precision / recall | 1.000 / 1.000 | 1.000 / 1.000 |
 | Stay lengths exact after shifting | 112 / 112 | 134 / 134 |
-| Voter-list attack: records / pooled profiles (raw) | 0 / 0 (198 / 60) | 0 / 0 (242 / 80) |
-| Targeted attack (raw) | 11 / 36 (6) | 13 / 45 (12) |
-| Medical values kept | 94.7% | 95.4% |
+| Voter-list attack: records / pooled profiles (raw) | 0 / 2 (198 / 60) | 0 / 0 (242 / 80) |
+| Targeted attack (raw) | 18 / 36 (6) | 24 / 45 (12) |
+| Medical values kept | 100% (2,563 / 2,563) | 100% (2,932 / 2,932) |
 
 Fixes: separator-less hospital numbers, `{"meta", "records"}` JSON split per record,
 `dd-Mon-yyyy` dates, Hindi `पिन कोड`/`गाँव` headers, bracketed phones, names written
 into headers/keys, kinship honorifics (bhaiya, chacha ...), chat senders and attendants
 never taken as the patient, weak notes linked only when exactly one patient fits,
 ड़/ढ़ transliterated as r/rh, districts read from free-text addresses for the risk estimate,
-and a "65+" top code for very old patients who stay rare.
+ages like "16 Y/M", diagnosis phrases protected from name guessing, and a new ladder that
+widens the age (10-year, 20-year, then "18+"/"0-17") instead of removing the district, so
+every district and disease name survives. `max_level: 3` in `config/privacy.json` restores
+district removal for the rarest patients (stricter privacy, about 1% fewer medical values).
 
 Unseen-format check: a copy of the practice set with renamed CSV headers and JSON keys,
 reworded note labels, `dd.mm.yyyy` dates and UPPERCASE names gives linkage 1.000 / 1.000,

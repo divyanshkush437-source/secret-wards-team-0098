@@ -162,13 +162,21 @@ class PrivacyTests(unittest.TestCase):
         subjects['old'] = {'codes': set(), 'ages': {97}, 'gender': 'M', 'district': 'denseville'}
         levels = P.risk_levels(subjects)
         self.assertEqual(levels[0], 0)
-        self.assertEqual(levels['lonely'], 2)      # district would single her out
-        self.assertEqual(levels['old'], 3)         # a lone 85+ patient is widened to "65+"
+        self.assertGreaterEqual(levels['lonely'], 2)   # age widened first; district only if still needed
+        self.assertGreaterEqual(levels['old'], 2)      # a lone 85+ patient is released as "18+"
 
     def test_expected_registry_cell_reaches_k(self):
         subjects = {i: {'codes': set(), 'ages': {20 + i}, 'gender': 'F', 'district': 'd%d' % (i % 3)} for i in range(60)}
         levels = P.risk_levels(subjects)
         self.assertTrue(set(levels.values()) <= {0, 1, 2})
+
+    def test_strict_mode_can_drop_district(self):
+        subjects = {i: {'codes': set(), 'ages': {30}, 'gender': 'F', 'district': 'big'} for i in range(40)}
+        subjects['lonely'] = {'codes': set(), 'ages': {97}, 'gender': 'M', 'district': 'tiny'}
+        strict = dict(P.DEFAULTS, max_level=3)
+        self.assertEqual(P.risk_levels(subjects, strict)['lonely'], 3)
+        self.assertEqual(P.risk_levels(subjects)['lonely'], 2)
+        self.assertEqual(P.age_band(97, 2), '18+')
 
     def test_pin(self):
         self.assertEqual(P.generalize_pin('226001'), '226XXX')
@@ -337,8 +345,9 @@ class LetterheadTests(unittest.TestCase):
         p.finish()
         out, psn = p.clean('n', 'doc', 'Arogya Hospital, Tinypur\nPatient Name: Zorvan Takreli  Age: 97 Yrs/M\nUHID: ZZH/26/000123\n')
         self.assertIsNotNone(psn)
-        self.assertNotIn('Tinypur', out)
-        self.assertIn('65+', out)                  # lone very old patient: wider top code, still truthful
+        self.assertIn('Tinypur', out)              # districts are always kept (max_level 2)
+        self.assertIn('18+', out)                  # lone very old patient: adult-only age, still truthful
+        self.assertNotIn(' 97 ', out)
 
 
 class EndToEndTests(unittest.TestCase):
@@ -424,8 +433,8 @@ class EndToEndTests(unittest.TestCase):
         note = next(out.glob('sanitized/discharge/*.txt')).read_text(encoding='utf-8')
         for keep in ('Dr. Ramesh Srivastava', 'Paracetamol 650 mg 1-0-1 x 5 days', 'Temp 101.2 F', 'BP 150/90', '(A97.9)'):
             self.assertIn(keep, note)
-        # Only one patient has dengue here: the name is generalised, the ICD code kept.
-        self.assertIn('rare condition (ICD-10 ch. I: infectious) (A97.9)', note)
+        # Disease names are always kept; rare patients get wider demographics instead.
+        self.assertIn('Dengue fever (A97.9)', note)
         hindi = (out / 'sanitized/notes/hindi_note.txt').read_text(encoding='utf-8')
         self.assertIn('Bukhar 102 F', hindi)
         self.assertIn('Dolo 650 BD x 5 days', hindi)
@@ -435,8 +444,12 @@ class EndToEndTests(unittest.TestCase):
         lines = (out / 'sanitized/registration/zz_hospital.csv').read_text(encoding='utf-8').splitlines()
         self.assertEqual(lines[0], 'UHID,Patient Name,Gender,Age,DOB,Relative Name,Village,District,PIN,Mobile,Reg Date')
         row = lines[1].split(',')
-        lo, hi = map(int, row[3].split('-'))
-        self.assertTrue(lo <= 47 <= hi)
+        band = row[3]
+        if band.endswith('+'):
+            self.assertGreaterEqual(47, int(band[:-1]))
+        else:
+            lo, hi = map(int, band.split('-'))
+            self.assertTrue(lo <= 47 <= hi)
         self.assertEqual(len(lines), 3)
 
     def test_fhir_references_resolve(self):

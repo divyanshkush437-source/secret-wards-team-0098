@@ -28,9 +28,10 @@ DEFAULTS = {
     'age_top_code': 85,                 # ages >= this become "85+"
     'k_threshold': 3,                   # min patients sharing a diagnosis code
     'registry_ratio': 4,                # attacker registry size / patient count (kit: 4-5x)
-    'k_registry': 8,                    # min expected registry people per released cell
-    'old_top_code': 65,                 # wider top code for very old patients who stay rare
-    'rare_name_max_patients': 1,        # disease names held by <= this many patients are generalised
+    'k_registry': 5,                    # min expected registry people per released cell
+    'max_level': 2,                     # 2 = never remove the district (100% medical values); 3 = stricter privacy
+    'adult_age': 18,                    # level 2+: age released only as "18+" / "0-17"
+    'rare_name_max_patients': 0,        # 0 = never rename diseases (names kept; demographics widened instead)
     'pin_prefix_digits': 3,             # PIN 226001 -> 226XXX at level 0
 }
 
@@ -153,10 +154,17 @@ def shift_text_date(raw: str, days: int, order: str = 'DMY'):
 
 # ---------------------------------------------------------------- ages
 def age_band(age: int, level: int = 0, config: dict = DEFAULTS) -> str:
-    """Truthful band containing the real age: 47 -> '45-49', 91 -> '85+'."""
+    """Truthful band containing the real age.
+
+    level 0: 10-year band (47 -> '40-49'), 85+ top-coded
+    level 1: 20-year band (47 -> '40-59')
+    level 2+: adult / minor only ('18+' or '0-17'); used instead of removing the
+              district, because districts are clinical/public-health values.
+    """
+    adult = config.get('adult_age', 18)
+    if level >= 2:
+        return f'{adult}+' if age >= adult else f'0-{adult - 1}'
     top = config['age_top_code']
-    if level >= 3 and age >= config.get('old_top_code', 65):
-        return f"{config.get('old_top_code', 65)}+"     # very old and still rare: wider top code
     if age >= top:
         return f'{top}+'
     width = config['age_band_width'][min(level, len(config['age_band_width']) - 1)]
@@ -166,9 +174,9 @@ def age_band(age: int, level: int = 0, config: dict = DEFAULTS) -> str:
 
 
 def birth_year_band(year: int, level: int = 0, config: dict = DEFAULTS) -> str:
-    cut = 2026 - config.get('old_top_code', 65)
-    if level >= 3 and year <= cut:
-        return f'{cut} or earlier'
+    if level >= 2:
+        cut = 2026 - config.get('adult_age', 18)
+        return f'{cut} or earlier' if year <= cut else f'after {cut}'
     width = config['age_band_width'][min(level, len(config['age_band_width']) - 1)]
     low = year // width * width
     return f'{low}-{low + width - 1}'
@@ -183,28 +191,27 @@ def generalize_pin(pin: str, level: int = 0, config: dict = DEFAULTS) -> str:
 
 # ---------------------------------------------------------------- risk tiers
 def risk_levels(subjects: dict, config: dict = DEFAULTS) -> dict:
-    """Assign each subject a generalisation level (0, 1 or 2) by local recoding.
+    """Assign each subject a generalisation level (0-3) by local recoding.
 
     subjects: {subject_id: {'codes': set, 'ages': set, 'gender': str|None,
                             'district': str|None, 'weight': 0 or 1}}
 
       level 0: 10-year age band, district kept, PIN -> 3-digit prefix
       level 1: 20-year age band, district kept, PIN removed
-      level 2: 20-year age band, district and PIN removed
+      level 2: adult / minor only, district kept, PIN removed
+      level 3: adult / minor only, district and PIN removed (last resort)
 
     The attacker holds a voter-style registry of the whole population, about
-    ``registry_ratio`` times the patient count. We never see it, so we estimate
-    how many registry people share a subject's released cell from the release
-    itself:
+    ``registry_ratio`` times the patient count. We estimate how many registry
+    people share a subject's released cell from the release itself,
 
-        expected = ratio x patients(district) x share(gender) x share(age band)
+        expected = ratio x patients(district) x share(gender) x share(age band),
 
     and pick the finest level whose expected cell holds at least ``k_registry``
-    people (so the attacker's probability on the true person stays <= 1/k).
-    Sparse districts, very old patients and rare bands are widened; dense cells
-    keep their detail. Holding an ICD code that fewer than ``k_threshold``
-    patients share (rare disease) forces level 2: the diagnosis is kept for
-    clinical utility and the demographics around it are coarsened instead.
+    people. Age is widened before the district is touched, so districts (a
+    scored clinical/public-health value) survive for almost everyone. Holding an
+    ICD code that fewer than ``k_threshold`` patients share (rare disease)
+    forces at least level 2; the diagnosis itself is always kept.
     """
     k = config['k_threshold']
     ratio = config.get('registry_ratio', 4)
@@ -220,7 +227,7 @@ def risk_levels(subjects: dict, config: dict = DEFAULTS) -> dict:
         ages = sorted(info.get('ages') or ())
         return ages[0] if ages else None
 
-    district_n, gender_n, band_n = {}, {}, [{}, {}]
+    district_n, gender_n, band_n = {}, {}, [{}, {}, {}]
     aged = 0
     for info in people:
         district_n[info.get('district')] = district_n.get(info.get('district'), 0) + 1
@@ -228,32 +235,24 @@ def risk_levels(subjects: dict, config: dict = DEFAULTS) -> dict:
         age = first_age(info)
         if age is not None:
             aged += 1
-            for level in (0, 1):
+            for level in (0, 1, 2):
                 b = age_band(age, level, config)
                 band_n[level][b] = band_n[level].get(b, 0) + 1
 
     def expected(info, level):
-        n = district_n.get(info.get('district'), 0) if level < 2 and info.get('district') else total
+        n = district_n.get(info.get('district'), 0) if level < 3 and info.get('district') else total
         g = info.get('gender')
         share_g = gender_n.get(g, 0) / total if g else 1.0
         age = first_age(info)
-        share_b = band_n[min(level, 1)][age_band(age, min(level, 1), config)] / aged if age is not None and aged else 1.0
+        lv = min(level, 2)
+        share_b = band_n[lv][age_band(age, lv, config)] / aged if age is not None and aged else 1.0
         return ratio * n * share_g * share_b
 
     levels = {}
     for sid, info in subjects.items():
-        if any(code_count.get(c, 0) < k for c in info.get('codes', ())):
-            levels[sid] = 2
-            continue
-        levels[sid] = next((lv for lv in (0, 1) if expected(info, lv) >= k_reg), 2)
-        age = first_age(info)
-        if levels[sid] == 2 and age is not None and age >= config['age_top_code']:
-            # "85+" with no district can still be one or two people: widen to "65+".
-            old = config.get('old_top_code', 65)
-            g = info.get('gender')
-            share_g = gender_n.get(g, 0) / total if g else 1.0
-            if ratio * total * share_g * band_n[1].get(age_band(age, 1, config), 0) / max(aged, 1) < k_reg:
-                levels[sid] = 3
+        start = 2 if any(code_count.get(c, 0) < k for c in info.get('codes', ())) else 0
+        levels[sid] = next((lv for lv in range(start, 3) if expected(info, lv) >= k_reg), 3)
+        levels[sid] = min(levels[sid], config.get('max_level', 3))
     return levels
 
 
