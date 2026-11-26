@@ -27,3 +27,31 @@ integration checkpoint, not an anonymized research release. Synthetic data only.
 Core execution needs only the Python standard library. The optional detector
 requirements add phone validation, YAML editing and development tools; they are
 not automatically installed or required by the submission entry point.
+
+## How the parts fit together
+
+The runner reads each supported input twice in a stable order. Its first pass calls
+`observe(file_id, loc, data)` so the processor can collect evidence in memory.
+It then calls `finish()` once. The second pass calls `clean(file_id, loc, data)`
+and writes processed values to a staging directory before publishing the report.
+Original input locators are retained in records.jsonl. Every non-null patient ID
+returned by the processor must also appear as a complete ID in that output record.
+
+The detector uses bounded patterns for identifiers and dates plus multilingual
+context rules for names and relatives. Structured clinical phrases protect against
+weak name guesses. Date timestamps retain their time portion, while their calendar
+date is exposed as a span for Member 3. Names, normalized identifiers and attributes
+are sensitive intermediate data: never print or serialize them into reports.
+
+The final Member 3 processor must preserve clinical information, link only when
+there is enough evidence, and consistently transform dates and quasi-identifiers.
+Only aggregate counters should reach report.json. Failed imports and execution
+errors produce fixed CLI messages, and malformed non-finite JSON numbers are
+quarantined. Unsupported encoded attachments stop the run rather than being
+published unchanged.
+
+The synthetic practice scores are not a guarantee on unseen formats or patients.
+The full 2-CPU/4-GB sandbox and final re-identification risk have not been verified.
+The two-page project brief will need the completed Member 3 design and results.
+See [MEMBER3_READINESS.md](MEMBER3_READINESS.md) for the latest boundary tests,
+network-blocked practice runs, and the exact remaining integration responsibilities.

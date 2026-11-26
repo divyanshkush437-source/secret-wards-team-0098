@@ -32,7 +32,7 @@ python3 /absolute/path/to/toolkit/check_dev.py --output my_output_member2
 ```
 
 Use a fresh output directory for each run. Do not print or commit the secret.
-Optional packages in `detector_requirements.txt` must be installed before going
+The latest handoff audit is in `MEMBER3_READINESS.md`. Optional packages in `detector_requirements.txt` must be installed before going
 offline. `phonenumbers` adds possibility validation; the no-package fallback checks
 bounded formats and digit lengths. PyYAML supports general YAML policy files; the
 default policy is JSON syntax, which is valid YAML. The spaCy blank PhraseMatcher
@@ -127,8 +127,9 @@ Unlabelled month-first text remains ambiguous. Two-digit years 00â€“30 use 2000â
 candidates, not proof of valid issuance. Masked Aadhaar values normalize with a
 `MASKED:` prefix and must never be used as unique strong identifiers for linkage.
 
-The public `detect_record` API does not infer all FHIR resource roles; the adapter
-adds role-aware traversal. Member 3 should retain that contextual behavior. Full
+The public `detect_record` API and adapter share contextual field traversal for
+Patient, Practitioner, RelatedPerson, clinical fields and guardian names. This is
+not a complete FHIR schema implementation; Member 3 should retain that context. Full
 FHIR profile validation, rare-value suppression, encryption-at-rest design and
 attack-risk evaluation remain whole-team tasks. See VALIDATION_MEMBER2.md for
 measured results and what they do not establish.

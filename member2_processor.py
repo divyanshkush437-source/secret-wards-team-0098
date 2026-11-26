@@ -12,11 +12,10 @@ import re
 from detector import detect_text, detect_key_or_filename
 from detector.context_rules import name_candidates, overlaps, resolve
 from detector.engine import _policy
-from detector.field_hints import canonical_hint
+from detector.field_hints import canonical_hint, contextual_hint
 from detector.schema import EntitySpan
 from detector.medical_whitelist import protected_ranges
 
-CLINICAL_FIELDS = set('drug medicine medication diagnosis procedure complaints history test unit strength frequency duration range code display title hospital department lab panel system resourcetype status type language profile contenttype'.split())
 DIRECT = {'PERSON','RELATIVE','PHONE','EMAIL','ID_AADHAAR','ID_ABHA','ID_PAN','ID_UHID'}
 
 class Processor:
@@ -32,15 +31,8 @@ class Processor:
         self.clinical_pattern = None
         self.district_values = set()
 
-    def _hint(self,key,path):
-        hint=canonical_hint(key)
-        if key.casefold() in {'district','जिला'}: return '__district__'
-        if key == 'display' and any(x in path for x in ('subject','patient')): return 'patient name'
-        if key == 'value' and 'identifier' in path: return 'uhid'
-        if 'address' in path and key in {'line','text','city','state','postalCode'}: return 'pincode' if key=='postalCode' else 'address'
-        if key.casefold() in CLINICAL_FIELDS or (key=='name' and any(x in path for x in ('panels','results','medication','Practitioner'))):
-            return '__clinical__'
-        return hint
+    def _hint(self,key,path,inherited='',role=''):
+        return contextual_hint(key,path,inherited,role,preserve_district=True)
 
     def _leaves(self,data,path=(),hint='',depth=0):
         if depth > 64: raise ValueError('Record nesting exceeds configured limit')
@@ -48,11 +40,7 @@ class Processor:
             role=data.get('resourceType','')
             for key,value in data.items():
                 if not isinstance(key,str): raise TypeError('Record keys must be strings')
-                child_hint=self._hint(key,path+(role,))
-                if hint=='__clinical__' and key in {'text','family','given','prefix','suffix'}: child_hint='__clinical__'
-                if hint=='patient name' and key in {'text','family','given','prefix','suffix','hi','en','hindi','english','latin','deva'}: child_hint='patient name'
-                if key=='name' and role=='Patient': child_hint='patient name'
-                if key=='name' and role in {'Practitioner','Organization','Location','Medication'}: child_hint='__clinical__'
+                child_hint=self._hint(key,path,hint,role)
                 yield from self._leaves(value,path+(key,),child_hint,depth+1)
         elif isinstance(data,list):
             for index,value in enumerate(data): yield from self._leaves(value,path+(str(index),),hint,depth+1)
@@ -133,13 +121,11 @@ class Processor:
             for key,value in data.items():
                 safe=self._key(key)
                 if safe in result: raise ValueError('Transformed key collision')
-                child_hint=self._hint(key,path+(role,))
-                if hint=='__clinical__' and key in {'text','family','given','prefix','suffix'}: child_hint='__clinical__'
-                if hint=='patient name' and key in {'text','family','given','prefix','suffix','hi','en','hindi','english','latin','deva'}: child_hint='patient name'
-                if key=='name' and role=='Patient': child_hint='patient name'
-                if key=='name' and role in {'Practitioner','Organization','Location','Medication'}: child_hint='__clinical__'
+                child_hint=self._hint(key,path,hint,role)
                 if key=='data' and isinstance(value,str) and ('contentType' in data or 'attachment' in path or data.get('encoding')=='base64'):
                     try:
+                        mime=str(data.get('contentType','')).split(';',1)[0].strip().casefold()
+                        if mime!='text/plain' or len(value)>1400000: raise ValueError
                         decoded=base64.b64decode(value,validate=True).decode('utf-8')
                         if len(decoded)>1000000: raise ValueError
                         cleaned=self._text(decoded,'')

@@ -2,8 +2,17 @@
 import csv
 import io
 import json
+import math
 from dataclasses import dataclass
 
+
+def reject_constant(value):
+    raise ValueError("non-finite JSON number")
+
+def finite_float(value):
+    result=float(value)
+    if not math.isfinite(result): raise ValueError("non-finite JSON number")
+    return result
 
 def unique_keys(pairs):
     result = dict(pairs)
@@ -75,7 +84,7 @@ def parse(raw, suffix):
         return Document("text", [("doc", body)])
     if suffix != ".json":
         raise ValueError("unsupported format")
-    data = json.loads(body, object_pairs_hook=unique_keys)
+    data = json.loads(body, object_pairs_hook=unique_keys, parse_constant=reject_constant, parse_float=finite_float)
     if isinstance(data, list):
         return Document("list", [(f"/{i}", v) for i, v in enumerate(data)])
     if isinstance(data, dict):

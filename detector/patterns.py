@@ -1,6 +1,6 @@
 """Compiled bounded candidates; calendar parsing has no current-date dependency."""
 import re
-from datetime import date
+from datetime import date, datetime
 try:
     import phonenumbers
 except ImportError:
@@ -58,3 +58,11 @@ STRUCTURED_ID = re.compile(r'(?i)(?<![\w])(?:[a-z]{2,8}[-/](?:[a-z]{2,5}[-/])?(?
 
 MASKED_AADHAAR = re.compile(r'(?i)(?<!\w)[x*]{4}[ -]?[x*]{4}[ -]?\d{4}(?!\w)')
 COMPACT_ID = re.compile(r'(?i)(?<!\w)[a-z]{2,8}\d{2,4}[-/]\d{5,}(?!\w)')
+
+ISO_TIMESTAMP = re.compile(r'(?<!\w)(?P<date>\d{4}-\d{2}-\d{2})T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?(?![\w:+.-])')
+
+def normalize_timestamp_date(value):
+    try:
+        return datetime.fromisoformat(value.replace('Z','+00:00')).date().isoformat()
+    except ValueError:
+        return None

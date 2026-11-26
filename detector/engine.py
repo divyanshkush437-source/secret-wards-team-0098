@@ -6,7 +6,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 from .schema import EntitySpan, DetectionResult
-from .field_hints import canonical_hint
+from .field_hints import canonical_hint, contextual_hint
 from . import patterns as p
 from .medical_whitelist import protected_ranges, blocked_word
 from .context_rules import name_candidates, normalize_name, overlaps, resolve
@@ -104,6 +104,10 @@ def detect_text(text: str, field_hint: str = '', policy_path: str | None = None)
         norm = p.normalize_phone(m[0])
         if norm:
             add(*m.span(), 'PHONE', norm)
+    for m in p.ISO_TIMESTAMP.finditer(text):
+        norm=p.normalize_timestamp_date(m[0])
+        if norm:
+            add(*m.span('date'),_date_kind(text,m.start(),field_hint),norm)
     for pattern in (p.NUM_DATE, p.TEXT_DATE):
         for m in pattern.finditer(text):
             norm = p.normalize_date(m[0], policy['two_digit_year_pivot'], date_order)
@@ -181,7 +185,7 @@ def detect_record(record: dict[str, Any], policy_path: str | None = None) -> dic
     nested = any(isinstance(v,(list,dict)) for v in record.values())
     seen = set()
     def escape(value): return value.replace('~','~0').replace('/','~1')
-    def walk(value,path,hint,depth):
+    def walk(value,path,hint,depth,keys):
         if depth > 64: raise ValueError('Record nesting exceeds configured limit')
         if isinstance(value,(dict,list)):
             if id(value) in seen: raise ValueError('Cyclic record is unsupported')
@@ -190,7 +194,8 @@ def detect_record(record: dict[str, Any], policy_path: str | None = None) -> dic
                 for key,item in (value.items() if isinstance(value,dict) else enumerate(value)):
                     if isinstance(value,dict) and not isinstance(key,str):
                         raise TypeError('Record keys must be strings')
-                    walk(item,path+'/'+escape(str(key)),str(key) if isinstance(value,dict) else hint,depth+1)
+                    child_hint=contextual_hint(key,keys,hint,value.get('resourceType','')) if isinstance(value,dict) else hint
+                    walk(item,path+'/'+escape(str(key)),child_hint,depth+1,keys+(str(key),))
             finally: seen.remove(id(value))
         elif value is None or isinstance(value,bool):
             output[path] = DetectionResult()
@@ -199,7 +204,7 @@ def detect_record(record: dict[str, Any], policy_path: str | None = None) -> dic
         else:
             raise TypeError('Unsupported record value type')
     for key,value in record.items():
-        walk(value,'/'+escape(key) if nested else key,key,0)
+        walk(value,'/'+escape(key) if nested else key,contextual_hint(key,(),'',record.get('resourceType','')),0,(key,))
     return output
 
 def detect_key_or_filename(label: str) -> list[EntitySpan]:

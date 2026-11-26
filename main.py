@@ -70,6 +70,10 @@ def run(root, output, processor, secret):
                     value, patient = processor.clean(name, loc, data)
                     if patient is not None and not re.fullmatch(r"PSN-[A-Z0-9]+", patient):
                         raise ValueError("invalid patient identifier")
+                    if patient is not None:
+                        rendered_value = value if isinstance(value,str) else json.dumps(value,ensure_ascii=False,allow_nan=False)
+                        if not re.search(r'(?<![A-Za-z0-9-])'+re.escape(patient)+r'(?![A-Za-z0-9-])',rendered_value):
+                            raise ValueError("patient identifier missing from output record")
                     values.append(value)
                     rows.append({"file": exported, "loc": loc, "patient": patient})
                 destination = clean / rel
@@ -111,18 +115,18 @@ def main():
         parser.exit(2, "Set RAKSHA_SECRET before running.\n")
     if args.demo and args.detector_only:
         parser.exit(2, "Choose only one processor mode.\n")
-    if args.detector_only:
-        from member2_processor import Processor
-    elif args.demo:
-        from demo_processor import DemoProcessor as Processor
-    else:
-        try:
-            from team_processor import Processor
-        except ModuleNotFoundError as exc:
-            if exc.name != "team_processor":
-                parser.exit(2, "Missing team processor dependency.\n")
-            from baseline_processor import Processor
     try:
+        if args.detector_only:
+            from member2_processor import Processor
+        elif args.demo:
+            from demo_processor import DemoProcessor as Processor
+        else:
+            try:
+                from team_processor import Processor
+            except ModuleNotFoundError as exc:
+                if exc.name != "team_processor":
+                    parser.exit(2, "Missing team processor dependency.\n")
+                from baseline_processor import Processor
         result = run(args.input.resolve(), args.output.resolve(), Processor(secret), secret)
     except Exception:
         parser.exit(1, "Run stopped. Check input, output destination and processor setup.\n")
