@@ -117,13 +117,16 @@ def detect_text(text: str, field_hint: str = '', policy_path: str | None = None)
         group = next(key for key in ('label','years','compact') if m[key] is not None)
         duration = group == 'years' and re.search(r'(?i)(?:\bfor|\bsince|\blast|\bpast|\bx|duration[:=]?)\s*$', text[max(0,m.start()-30):m.start()])
         duration = duration or (group == 'years' and re.match(r'(?i)\s*(?:back|ago)\b',text[m.end():]))
-        if int(m[group]) <= 120 and not duration:
+        temperature = group == 'compact' and re.search(r'(?i)(?:temp(?:erature)?|bukh?aa?r|fever|tap|बुखार|ताप)\W*$', text[max(0,m.start()-14):m.start()])
+        if int(m[group]) <= 120 and not duration and not temperature:
             add(*m.span(group), 'AGE', str(int(m[group])))
     if re.fullmatch(r'(?i)(age|उम्र|आयु)',field_hint.strip()) and text.strip().isdigit() and int(text.strip()) <= 120:
         add(len(text)-len(text.lstrip()),len(text.rstrip()),'AGE',str(int(text.strip())))
     for m in p.GENDER.finditer(text):
         group = 'compact_gender' if m['compact_gender'] else 0
         if group and int(re.match(r'\d+', m[0])[0]) > 120:
+            continue
+        if group and re.search(r'(?i)(?:temp(?:erature)?|bukh?aa?r|fever|tap|बुखार|ताप)\W*$', text[max(0,m.start()-14):m.start()]):
             continue
         add(*m.span(group), 'GENDER', 'F' if m[group].casefold() in {'f','female','महिला'} else 'M')
     if re.fullmatch(r'(?i)(sex|gender)',field_hint.strip()) and text.strip().upper() in {'F','M'}:

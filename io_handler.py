@@ -14,6 +14,21 @@ def finite_float(value):
     if not math.isfinite(result): raise ValueError("non-finite JSON number")
     return result
 
+MAX_DEPTH = 60
+
+
+def check_depth(data):
+    """Iteratively reject documents nested deeper than the processors accept."""
+    stack = [(data, 0)]
+    while stack:
+        value, depth = stack.pop()
+        if isinstance(value, (dict, list)):
+            if depth > MAX_DEPTH:
+                raise ValueError("nesting too deep")
+            items = value.values() if isinstance(value, dict) else value
+            stack.extend((item, depth + 1) for item in items)
+
+
 def unique_keys(pairs):
     result = dict(pairs)
     if len(result) != len(pairs):
@@ -85,11 +100,18 @@ def parse(raw, suffix):
     if suffix != ".json":
         raise ValueError("unsupported format")
     data = json.loads(body, object_pairs_hook=unique_keys, parse_constant=reject_constant, parse_float=finite_float)
+    check_depth(data)
     if isinstance(data, list):
         return Document("list", [(f"/{i}", v) for i, v in enumerate(data)])
     if isinstance(data, dict):
-        for key in ("visits", "patients"):
-            if data.get("resourceType") != "Bundle" and isinstance(data.get(key), list):
+        # Known record arrays first, then any single array of objects
+        # (e.g. {"results": [...]}) so each element gets its own locator.
+        candidates = [k for k in ("visits", "patients") if isinstance(data.get(k), list)]
+        others_scalar = lambda k: all(not isinstance(v, (dict, list)) for j, v in data.items() if j != k)
+        candidates += sorted((k for k, v in data.items() if k not in candidates and isinstance(v, list) and v
+                              and all(isinstance(x, dict) for x in v) and others_scalar(k)), key=lambda k: -len(data[k]))[:1]
+        for key in candidates:
+            if data.get("resourceType") is None and isinstance(data.get(key), list):
                 envelope = {k: v for k, v in data.items() if k != key}
                 rows = [(f"/{key}/{i}", v) for i, v in enumerate(data[key])]
                 return Document("group", rows, envelope=envelope, group=key)

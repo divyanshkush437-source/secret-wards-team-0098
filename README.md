@@ -1,24 +1,45 @@
 # Secret Wards — Team 0098
 
-Offline detection and privacy pipeline for synthetic English, Hindi and Hinglish
-hospital exports. No LLMs, pretrained transformers, model downloads or runtime
-network calls are used by the current code.
+Offline, CPU-only, LLM-free privacy firewall for synthetic English, Hindi and Hinglish
+hospital exports. No LLMs, pretrained transformers, model downloads or runtime network
+calls are used. No machine-learning model is used at all: detection and linkage are
+rules, gazetteer-free context patterns and classical string/phonetic matching written
+during the event. The 2-page brief is [Project_Brief.pdf](Project_Brief.pdf).
+
+```sh
+python3 -m pip install -r requirements.txt     # optional; core is standard library only
+python3 -m unittest -q                         # 159 tests
+# RAKSHA_SECRET must already be set privately in your environment.
+python3 main.py --input /path/to/input --output /path/to/fresh_output
+```
+
+The normal command (also in raksha.toml) runs the full pipeline through
+`team_processor.Processor`: Member 2 detection + Member 3 linkage and privacy layer.
 
 - Member 1's ingestion and output runner: [MEMBER1.md](MEMBER1.md).
 - Member 2's detector, run instructions and integration contract: [MEMBER2.md](MEMBER2.md).
-- Measured checks and remaining work: [VALIDATION_MEMBER2.md](VALIDATION_MEMBER2.md).
+- Member 3's linkage, pseudonyms, privacy layer and red-team results: [MEMBER3.md](MEMBER3.md).
 
-```sh
-python3 -m unittest -q
-# RAKSHA_SECRET must already be set privately in your environment.
-python3 main.py --detector-only --input /path/to/synthetic/input --output my_output_member2
-```
+## Practice results (official kit `dev/`, measured with `test_attacker.py`)
+
+| Measure | Result |
+|---|---|
+| Files sanitized / quarantined | 193 / 7 (822 records, 775 linked) |
+| Linkage precision / recall / F0.5 | 1.000 / 0.985 / 0.997; homonym pairs 2/2 kept apart |
+| Direct identifiers surviving | 0 of 1,250 Aadhaar/ABHA/PAN/phone/email/UHID mentions |
+| Clinical values kept | 4,852 / 4,855 |
+| Admission/discharge intervals | 22 / 22 exact after per-patient shifting |
+| Registry attack (age band + gender + district) | mean 0.16 on the true person; 4/50 profiles ≥ 0.5 |
+| Determinism | byte-identical with the same secret; 0 pseudonyms shared under another secret |
+| Speed / memory | 3.8 s, 31 MB; 6× data (1,200 files) 40 s, 149 MB |
+
+These are practice numbers, not a guarantee on hidden data.
+
+## Other modes
 
 Use `--detector-only` to exercise the Member 2 adapter. Without that flag, the
 runner selects `team_processor.Processor` if present, otherwise Member 1's interim
 baseline. `--demo` is only for the two fictional sample rows in `examples/input`.
-The normal submission command in raksha.toml is unchanged; the final Member 3
-processor and privacy layer still need integration before submission.
 
 The detector-only mode masks identifiers and fine-grained locations but leaves
 DOB, dates, age and gender unchanged and does not link patients. It is an
@@ -43,15 +64,14 @@ weak name guesses. Date timestamps retain their time portion, while their calend
 date is exposed as a span for Member 3. Names, normalized identifiers and attributes
 are sensitive intermediate data: never print or serialize them into reports.
 
-The final Member 3 processor must preserve clinical information, link only when
-there is enough evidence, and consistently transform dates and quasi-identifiers.
-Only aggregate counters should reach report.json. Failed imports and execution
+The Member 3 processor links only when there is enough evidence, keeps every
+clinical value, shifts each patient's dates by one secret offset and generalises
+quasi-identifiers (see MEMBER3.md). Only aggregate counters should reach report.json. Failed imports and execution
 errors produce fixed CLI messages, and malformed non-finite JSON numbers are
 quarantined. Unsupported encoded attachments stop the run rather than being
 published unchanged.
 
 The synthetic practice scores are not a guarantee on unseen formats or patients.
-The full 2-CPU/4-GB sandbox and final re-identification risk have not been verified.
-The two-page project brief will need the completed Member 3 design and results.
-See [MEMBER3_READINESS.md](MEMBER3_READINESS.md) for the latest boundary tests,
-network-blocked practice runs, and the exact remaining integration responsibilities.
+The organisers' exact 2-CPU/4-GB sandbox was not reproduced locally.
+[MEMBER3_READINESS.md](MEMBER3_READINESS.md) records the handoff audit that preceded
+the Member 3 integration.
