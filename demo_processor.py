@@ -3,7 +3,7 @@
 
 class DemoProcessor:
     def __init__(self, secret):
-        pass
+        self.entities = {"PATIENT_NAME": 0}
 
     def observe(self, file_id, loc, data):
         if data not in ({"patient_name": "Demo Canary Alpha", "medicine": "Dolo 650"},
@@ -15,4 +15,5 @@ class DemoProcessor:
 
     def clean(self, file_id, loc, data):
         self.observe(file_id, loc, data)
+        self.entities["PATIENT_NAME"] += 1
         return {"patient_name": "[REDACTED]", "medicine": "Dolo 650"}, None

@@ -17,6 +17,8 @@ class Document:
     layout: str
     records: list
     delimiter: str = ","
+    envelope: object = None
+    group: str = ""
 
     def render(self, values):
         if self.layout == "table":
@@ -33,10 +35,9 @@ class Document:
             if not isinstance(values[0], str):
                 raise ValueError("expected text")
             return values[0]
-        if self.layout == "visits":
-            data = {"visits": values}
-        elif self.layout == "bundle":
-            data = {"resourceType": "Bundle", "type": "collection", "entry": values}
+        if self.layout == "group":
+            data = dict(self.envelope)
+            data[self.group] = values
         elif self.layout == "list":
             data = values
         else:
@@ -45,10 +46,15 @@ class Document:
 
 
 def parse(raw, suffix):
-    try:
-        body = raw.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        body = raw.decode("latin-1")
+    if not raw.strip():
+        raise ValueError("empty file")
+    if raw.startswith((b"\xff\xfe", b"\xfe\xff")):
+        body = raw.decode("utf-16")
+    else:
+        try:
+            body = raw.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            body = raw.decode("cp1252")
     if "\0" in body:
         raise ValueError("binary input")
     if suffix in {".csv", ".tsv"}:
@@ -73,11 +79,9 @@ def parse(raw, suffix):
     if isinstance(data, list):
         return Document("list", [(f"/{i}", v) for i, v in enumerate(data)])
     if isinstance(data, dict):
-        if set(data) == {"visits"} and isinstance(data["visits"], list):
-            return Document("visits", [(f"/visits/{i}", v) for i, v in enumerate(data["visits"])])
-        if (set(data) == {"resourceType", "type", "entry"} and
-                data["resourceType"] == "Bundle" and data["type"] == "collection"
-                and isinstance(data["entry"], list)):
-            return Document("bundle", [(f"/entry/{i}", v) for i, v in enumerate(data["entry"])])
-    # Preserve other envelopes by passing the whole document to the team processor.
-    return Document("json", [("", data)])
+        for key in ("visits", "patients"):
+            if data.get("resourceType") != "Bundle" and isinstance(data.get(key), list):
+                envelope = {k: v for k, v in data.items() if k != key}
+                rows = [(f"/{key}/{i}", v) for i, v in enumerate(data[key])]
+                return Document("group", rows, envelope=envelope, group=key)
+    return Document("json", [("doc", data)])

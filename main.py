@@ -25,7 +25,7 @@ def snapshot(path):
 def run(root, output, processor, secret):
     root = root.resolve()
     output = output.resolve()
-    if not root.is_dir() or output.exists() or root == output or root in output.parents:
+    if not root.is_dir() or (output.exists() and (not output.is_dir() or any(output.iterdir()))) or root == output or root in output.parents:
         raise ValueError("use independent input and fresh output")
     start = time.monotonic()
     entries = []
@@ -33,30 +33,37 @@ def run(root, output, processor, secret):
     for path in sorted(root.rglob("*")):
         if path.is_dir() and not path.is_symlink():
             continue
-        entry = {"sha256": None, "status": "quarantined", "records": 0}
+        entry = {"input_sha256": None, "status": "quarantined", "output": None, "reason": "unsupported_or_malformed"}
         entries.append(entry)
         try:
             raw, digest = snapshot(path)
-            entry["sha256"] = digest
+            entry["input_sha256"] = digest
             doc = parse(raw, path.suffix.lower())
         except (ValueError, OSError, csv.Error, RecursionError):
             continue
         name = safe_path(path.relative_to(root), secret)
+        if doc.envelope:
+            processor.observe(name, None, doc.envelope)
         for loc, data in doc.records:
             processor.observe(name, loc, data)
         files.append((entry, path, name))
     processor.finish()
-    output.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(dir=output.parent) as temporary:
+    processed = linked = 0
+    output.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=output) as temporary:
         stage = Path(temporary) / "ready"
         clean = stage / "sanitized"
         clean.mkdir(parents=True)
         with (stage / "records.jsonl").open("w", encoding="utf-8") as manifest:
             for entry, path, name in files:
                 raw, digest = snapshot(path)
-                if digest != entry["sha256"]:
+                if digest != entry["input_sha256"]:
                     raise ValueError("input changed")
                 doc = parse(raw, path.suffix.lower())
+                rel = safe_path(path.relative_to(root), secret, getattr(processor, "name_pattern", None))
+                exported = "sanitized/" + rel
+                if doc.envelope:
+                    doc.envelope, _ = processor.clean(name, None, doc.envelope)
                 values = []
                 rows = []
                 for loc, data in doc.records:
@@ -64,24 +71,31 @@ def run(root, output, processor, secret):
                     if patient is not None and not re.fullmatch(r"PSN-[A-Z0-9]+", patient):
                         raise ValueError("invalid patient identifier")
                     values.append(value)
-                    rows.append({"file": name, "loc": loc, "patient": patient})
-                destination = clean / name
+                    rows.append({"file": exported, "loc": loc, "patient": patient})
+                destination = clean / rel
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 with destination.open("x", encoding="utf-8", newline="") as handle:
                     handle.write(doc.render(values))
                 for row in rows:
                     manifest.write(json.dumps(row) + "\n")
-                entry.update(status="sanitized", file=name, records=len(rows))
+                del entry["reason"]
+                entry.update(status="sanitized", output=exported)
+                processed += len(rows)
+                linked += sum(r["patient"] is not None for r in rows)
         rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-        report = {"files": entries, "input_files": len(entries), "sanitized": len(files),
-                  "quarantined": len(entries) - len(files),
-                  "records": sum(e["records"] for e in entries),
-                  "elapsed_seconds": round(time.monotonic() - start, 6),
-                  "peak_ram_bytes": rss if sys.platform == "darwin" else rss * 1024}
+        entities = dict(getattr(processor, "entities", {}))
+        counts = {"files_total": len(entries), "files_sanitized": len(files),
+                  "files_quarantined": len(entries) - len(files), "records_processed": processed,
+                  "identifiers_detected": sum(entities.values()), "records_linked": linked,
+                  "records_generalized": getattr(processor, "generalized", 0),
+                  "records_suppressed": 0, "records_quarantined": 0}
+        report = {"schema": "raksha-report/1", "files": entries, "counts": counts,
+                  "entities": entities, "timing": {"seconds": round(time.monotonic() - start, 4)},
+                  "resources": {"peak_rss_mb": round(rss / (1048576 if sys.platform == "darwin" else 1024), 2)}}
         (stage / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
-        if output.exists():
-            raise ValueError("destination already exists")
-        stage.rename(output)
+        # Publish the completion report last.
+        for filename in ("sanitized", "records.jsonl", "report.json"):
+            (stage / filename).rename(output / filename)
     return report
 
 
@@ -99,13 +113,15 @@ def main():
     else:
         try:
             from team_processor import Processor
-        except ImportError:
-            parser.exit(2, "Team processor unavailable. Use --demo for the fictional example.\n")
+        except ModuleNotFoundError as exc:
+            if exc.name != "team_processor":
+                parser.exit(2, "Missing team processor dependency.\n")
+            from baseline_processor import Processor
     try:
         result = run(args.input.resolve(), args.output.resolve(), Processor(secret), secret)
     except Exception:
         parser.exit(1, "Run stopped. Check input, output destination and processor setup.\n")
-    print("Sanitized {sanitized} files, quarantined {quarantined}, wrote {records} records.".format(**result))
+    print("Sanitized {files_sanitized} files, quarantined {files_quarantined}, wrote {records_processed} records.".format(**result["counts"]))
 
 
 if __name__ == "__main__":

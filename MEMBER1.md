@@ -1,24 +1,27 @@
-# Member 1 walkthrough
+# Member 1 · official practice run
 
-Run the commands below from this branch on your Mac. Python 3.9+ on macOS or Linux is sufficient.
+Use the Secret Wards toolkit from https://github.com/Reinforce-SST/Secret-Wards-ToolKit. The commands below assume it was unzipped into Downloads on your Mac. Run them from the team repository on the member-1-file-handler branch.
 
-1. Open Terminal in the repository directory. Run `git switch member-1-file-handler` after fetching the branch.
-2. Run `export RAKSHA_SECRET="$(python3 -c 'import secrets; print(secrets.token_hex(32))')"`. This makes a temporary secret for your shell. Reuse it to reproduce opaque paths.
-3. Run `python3 -m unittest -v test_member1`.
-4. Run `python3 main.py --demo --input examples/input --output my_output`. Choose a fresh destination for each run.
-5. Inspect `my_output/report.json`, `my_output/records.jsonl` and the generated CSV in `my_output/sanitized/`. Expect one cleaned CSV, two row entries, one quarantined malformed JSON and no fictional names. The medicine survives.
-6. Connect the team processor as described below. Remove the demo flag and use the organizer's dev input. Compare the report fields, file path convention, record locations and TOML keys with the official contract. Run `python3 validate_output.py --input dev/input --output my_output_team` after producing my_output_team. Record real time and memory on the full dataset.
+```sh
+git pull --ff-only
+export RAKSHA_SECRET="$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
+kit="$HOME/Downloads/Secret-Wards-ToolKit-main"
+python3 -m unittest -v test_member1
+python3 main.py --input "$kit/dev/input" --output my_output_official
+python3 "$kit/validate_output.py" --input "$kit/dev/input" --output my_output_official
+python3 "$kit/check_dev.py" --output my_output_official
+python3 "$kit/check_submission.py" --repo . --run
+```
+
+Choose an empty or new output directory for each release. The two-row practice exercise remains available with `--demo --input examples/input`. Only use the integration baseline with synthetic data. The official format checker tests structure. The separate practice self-check measures leaks, medical utility and patient linkage.
 
 ## Team handoff
 
-Members 2 and 3 implement a shared adapter in team_processor.py exposing Processor(secret). The secret is bytes. The runner calls the following methods.
+Member 1 reads input twice in sorted order. Normal runs use team_processor.Processor(secret) when installed or baseline_processor.Processor otherwise. Members 2 and 3 supply team_processor.py. Import failures inside it stop execution.
 
-* observe(file_id, loc, data) once per record before any outputs are written. Member 2 extracts identifying evidence. Member 3 indexes evidence for cross-file linking. Keep the minimum evidence in memory.
-* finish() once after the first pass. Member 3 resolves groups.
-* clean(file_id, loc, data) on the second pass returns (cleaned_data, patient_id_or_None). Member 2 cleans values and sensitive keys, including CSV headers. Member 3 applies privacy transformations and supplies a PSN identifier for confident matches. Both passes use the same file_id and loc. Return a dictionary with consistent keys for each table row, a string for notes, and JSON-compatible data for JSON/FHIR.
+* observe(file_id, loc, data) receives each record before linkage. file_id is an internal path token, loc is the original record locator, and data is parsed text, JSON, or a table row. For a grouped JSON document loc=None denotes envelope metadata. Never log file_id or data.
+* finish() resolves matches across files. An optional compiled name_pattern lets the writer recognize private path components.
+* clean(file_id, loc, data) returns (cleaned_data, patient_id_or_None). Clean both keys and values. Apply the same header transformation across table rows. For linked records embed the same ID in the exported data. Envelope metadata should return a dictionary and None.
+* Supply an entities counter for removed identifiers and a generalized count for transformed records. FHIR bundles use doc as their locator and require consistent references. Suppression and changed output locators need coordinated support before enabling them.
 
-file_id is an opaque relative output path. Folder depth is preserved. Each file report links its input content digest to its output path. Locations use zero-based row numbers, JSON pointers (empty string for the root) or doc for text. When header renaming is needed across a table, agree on a consistent mapping before returning cleaned rows.
-
-## Scope to verify with the official starter
-
-The sample processor accepts only the two bundled fictional row values. Normal mode requires the team adapter. FHIR input is JSON and the runner does not validate clinical schemas. Simple collection bundles are split by entry. Other bundles and envelopes are passed whole to the adapter so metadata is included. Adapt the record boundaries to the official dataset. Header-only CSVs are quarantined. Ordinary files are hashed even if parsing fails. Unreadable files and symlinks have a null digest. All files must stay unchanged during a run. Peak memory depends on the largest file and the linker's index. Confirm both contest limits on the official practice set.
+The writer uses UTF-8, reports input SHA-256 hashes and the output mapping, and uses keyed tokens for suspicious path components. Temporary output contains only processed values. Keep raw data and cross-file evidence in memory. Unreadable inputs, header-only tables and malformed or unsupported inputs have limitations; the reader quarantines these when possible. The interim processor is a simple structured-field and regex baseline. It lacks comprehensive multilingual detection, patient linkage and date shifting. The team still owns these features and the final README/PDF.
