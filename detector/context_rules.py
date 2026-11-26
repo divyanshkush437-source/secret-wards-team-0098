@@ -20,7 +20,9 @@ def trigger_matcher(markers):
 
 @lru_cache(maxsize=64)
 def marker_pattern(markers):
-    return re.compile(r'(?<!\w)(?:' + '|'.join(re.escape(x) for x in sorted(markers, key=lambda x: (-len(x), x))) + r')(?!\w)\s*[:=-]?\s*', re.I)
+    # Devanagari vowel signs, nukta and virama are not \w in Python; treat them
+    # as word characters so "मरीज" does not match inside "मरीज़".
+    return re.compile(r'(?<![\w\u0900-\u097f])(?:' + '|'.join(re.escape(x) for x in sorted(markers, key=lambda x: (-len(x), x))) + r')(?![\w\u0900-\u097f])\s*[:=-]?\s*', re.I)
 
 def marker_matches(text, markers):
     # Regex remains authoritative for punctuation and original offsets.

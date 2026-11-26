@@ -8,7 +8,7 @@ during the event. The 2-page brief is [Project_Brief.pdf](Project_Brief.pdf).
 
 ```sh
 python3 -m pip install -r requirements.txt     # optional; core is standard library only
-python3 -m unittest -q                         # 159 tests
+python3 -m unittest -q                         # 164 tests
 # RAKSHA_SECRET must already be set privately in your environment.
 python3 main.py --input /path/to/input --output /path/to/fresh_output
 ```
@@ -27,11 +27,11 @@ The normal command (also in raksha.toml) runs the full pipeline through
 | Files sanitized / quarantined | 193 / 7 (822 records, 775 linked) |
 | Linkage precision / recall / F0.5 | 1.000 / 0.985 / 0.997; homonym pairs 2/2 kept apart |
 | Direct identifiers surviving | 0 of 1,250 Aadhaar/ABHA/PAN/phone/email/UHID mentions |
-| Clinical values kept | 4,852 / 4,855 |
+| Clinical values kept | 4,801 / 4,855 (54 districts suppressed for high-risk patients) |
 | Admission/discharge intervals | 22 / 22 exact after per-patient shifting |
-| Registry attack (age band + gender + district) | mean 0.16 on the true person; 4/50 profiles ≥ 0.5 |
+| Registry attack (district, gender, band, PIN prefix) | 0/50 profiles and 0/746 records re-identified at ≥ 0.5 (raw input: 10 and 11) |
 | Determinism | byte-identical with the same secret; 0 pseudonyms shared under another secret |
-| Speed / memory | 3.8 s, 31 MB; 6× data (1,200 files) 40 s, 149 MB |
+| Speed / memory | 4.6 s, 34 MB; 6× data (1,200 files) 43 s, 149 MB |
 
 These are practice numbers, not a guarantee on hidden data.
 

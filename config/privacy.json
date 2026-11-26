@@ -2,9 +2,14 @@
   "pseudonym_length": 8,
   "shift_min_days": 20,
   "shift_max_days": 200,
-  "age_band_width": [10, 10, 20],
+  "age_band_width": [
+    10,
+    20,
+    20
+  ],
   "age_top_code": 85,
   "k_threshold": 3,
-  "k_demographic": 1,
-  "pin_prefix_digits": 3
+  "pin_prefix_digits": 3,
+  "registry_ratio": 4,
+  "k_registry": 5
 }

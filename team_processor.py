@@ -80,6 +80,7 @@ class Processor(DetectorAdapter):
         self.levels = {}
         self._ctx = None
         self._generalized_record = False
+        self.district_pattern = None
 
     def _hint(self, key, path, inherited='', role=''):
         hint = super()._hint(key, path, inherited, role)
@@ -218,6 +219,8 @@ class Processor(DetectorAdapter):
                     years.append(value.year)
             ref = max(years) if years else None      # latest event; DOB is the earliest date
             ev.ages = {(a, ref) for a, _ in ev.ages}
+        names = sorted({v for v in self.district_values if len(v) >= 3}, key=lambda v: (-len(v), v))
+        self.district_pattern = re.compile(r'(?<!\w)(?:' + '|'.join(re.escape(v) for v in names) + r')(?!\w)', re.I) if names else None
         self.assignment = self.linker.resolve()
         clusters = {}
         for key, cid in self.assignment.items():
@@ -239,7 +242,8 @@ class Processor(DetectorAdapter):
         for key, ev in self.linker.records.items():
             cid = self.assignment.get(key)
             sid = ('C', cid) if cid is not None else ('R', repr(key))
-            info = subjects.setdefault(sid, {'codes': set(), 'ages': set(), 'gender': None, 'district': None})
+            info = subjects.setdefault(sid, {'codes': set(), 'ages': set(), 'gender': None, 'district': None,
+                                             'weight': 1 if cid is not None else 0})
             info['codes'].update(ev.codes)
             info['ages'].update(a for a, _ in ev.ages)
             if ev.genders and info['gender'] is None:
@@ -421,6 +425,13 @@ class Processor(DetectorAdapter):
                 continue
             self.entities[kind] += 1
             result = result[:span.start] + replacement + result[span.end:]
+        if level >= 2 and self.district_pattern is not None:
+            # High-risk patients: letterheads such as "Hospital, Barabanki" or
+            # "Labs (Lucknow)" would otherwise reveal the home district.
+            result, count = self.district_pattern.subn('[DISTRICT]', result)
+            if count:
+                self.entities['DISTRICT'] += count
+                self._generalized_record = True
         return result
 
     def _dob(self, span, level):

@@ -154,6 +154,22 @@ class PrivacyTests(unittest.TestCase):
         self.assertEqual(levels['rare'], 2)
         self.assertEqual(levels[0], 0)
 
+    def test_sparse_cells_are_widened(self):
+        # 40 patients in a dense district, 1 patient alone in a small one.
+        subjects = {i: {'codes': set(), 'ages': {30 + i % 20}, 'gender': 'F' if i % 2 else 'M',
+                        'district': 'denseville'} for i in range(40)}
+        subjects['lonely'] = {'codes': set(), 'ages': {54}, 'gender': 'F', 'district': 'tinyvillage'}
+        subjects['old'] = {'codes': set(), 'ages': {97}, 'gender': 'M', 'district': 'denseville'}
+        levels = P.risk_levels(subjects)
+        self.assertEqual(levels[0], 0)
+        self.assertEqual(levels['lonely'], 2)      # district would single her out
+        self.assertEqual(levels['old'], 2)         # 85+ is rare in any district
+
+    def test_expected_registry_cell_reaches_k(self):
+        subjects = {i: {'codes': set(), 'ages': {20 + i}, 'gender': 'F', 'district': 'd%d' % (i % 3)} for i in range(60)}
+        levels = P.risk_levels(subjects)
+        self.assertTrue(set(levels.values()) <= {0, 1, 2})
+
     def test_pin(self):
         self.assertEqual(P.generalize_pin('226001'), '226XXX')
         self.assertEqual(P.generalize_pin('226001', 2), '[PIN]')
@@ -200,6 +216,30 @@ def build_dataset(root: Path):
         {'patient_ref': 'ZZH/26/000123', 'visit_date': '2026-05-15', f'note_{CANARY}': 'ok', 'drug': 'Ramipril 5 mg'}]},
         ensure_ascii=False), encoding='utf-8')
     (root / 'notes' / 'broken.json').write_text('{"visits": [', encoding='utf-8')
+
+
+class HindiDetectionTests(unittest.TestCase):
+    def test_heading_is_not_a_name(self):
+        from detector import detect_text
+        self.assertFalse(detect_text('डिस्चार्ज सारांश').spans)
+
+    def test_nukta_label_still_finds_name(self):
+        from detector import detect_text
+        spans = detect_text('मरीज़ का नाम: ज़ोरवान टकरेली   आयु: 30 वर्ष').spans
+        people = [x.text for x in spans if x.entity_type == 'PERSON']
+        self.assertEqual(people, ['ज़ोरवान टकरेली'])
+
+
+class LetterheadTests(unittest.TestCase):
+    def test_high_risk_letterhead_district_masked(self):
+        p = Processor(b'k')
+        p.observe('f', 'row:0', {'Patient Name': 'Zorvan Takreli', 'District': 'Tinypur', 'Age': '97', 'UHID': 'ZZH/26/000123'})
+        p.observe('n', 'doc', 'Arogya Hospital, Tinypur\nPatient Name: Zorvan Takreli  Age: 97 Yrs/M\nUHID: ZZH/26/000123\n')
+        p.finish()
+        out, psn = p.clean('n', 'doc', 'Arogya Hospital, Tinypur\nPatient Name: Zorvan Takreli  Age: 97 Yrs/M\nUHID: ZZH/26/000123\n')
+        self.assertIsNotNone(psn)
+        self.assertNotIn('Tinypur', out)
+        self.assertIn('85+', out)
 
 
 class EndToEndTests(unittest.TestCase):

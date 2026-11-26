@@ -41,10 +41,22 @@ Records with only a first name and no second clue stay `patient: null`.
 * Age: 10-year bands, 85+ top-coded; DOB becomes a birth-decade band (FHIR `birthDate`
   gets the shifted date so the bundle stays valid).
 * Location: village/house/locality removed, district kept, PIN → 3-digit prefix.
-* Rare diagnosis (ICD code held by < 3 patients): 20-year band, no district, no PIN.
+* Adaptive generalisation: for each patient we estimate how many people in the
+  attacker's voter registry share the released cell,
+  `4 × patients(district) × share(gender) × share(age band)`, and widen until it is at
+  least 5: first a 20-year band (PIN removed), then no district. At that level district
+  names are also masked in letterheads ("Hospital, Barabanki").
+* Rare diagnosis (ICD code held by < 3 patients): coarsest level, diagnosis kept.
 
-Measured trade-off on practice data: 5-year bands left 9/50 profiles re-identifiable in
-the registry attack; 10-year bands 4/50 (mean true-person probability 0.21 → 0.16).
+Measured on practice data with `test_attacker.py` (district, gender, age band, PIN
+prefix filters, the order the kit's ATTACKS.md documents):
+
+| Policy | Profiles re-identified (≥ 0.5) | Records re-identified | Districts lost |
+|---|---|---|---|
+| Raw input | 10 / 48 | 11 / 746 | – |
+| Fixed 5-year bands | 9 / 50 | – | 3 |
+| Fixed 10-year bands | 5 / 50 | 4 / 746 | 3 |
+| Adaptive (current) | **0 / 50** | **0 / 746** | 54 / 93 |
 
 ## Reproduce
 
@@ -58,4 +70,6 @@ python3 test_attacker.py --kit KIT --scale 6
 `test_attacker.py` prints aggregate counts only. Also fixed while integrating: JSON
 deeper than 60 levels is quarantined (it used to crash the run on newer Pythons),
 any `{"meta": ..., "<records>": [...]}` export gets per-record locators, and the
-detector no longer reads temperatures such as `Bukhar 103 F` as "age 103, female".
+detector no longer reads temperatures such as `Bukhar 103 F` as "age 103, female",
+Hindi labels with a nukta (मरीज़) no longer leave a stray `[PERSON]`, and Hindi headings
+such as डिस्चार्ज सारांश are no longer guessed to be names.

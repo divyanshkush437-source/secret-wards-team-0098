@@ -136,12 +136,13 @@ def build():
         ['Quasi-identifier', 'What we release', 'Why / cost'],
         ['Dates', 'Shifted by a secret per-patient offset of &plusmn;20-200 days (unlinked records: per-record)',
          'Defeats global-shift recovery; all 22 admission/discharge intervals kept exactly'],
-        ['Age', '10-year band (47 &rarr; 40-49); 85+ top-coded; 20-year band for rare-diagnosis patients',
-         'Bands always contain the true age. 5-year bands left 9/50 profiles re-identifiable, 10-year 4/50'],
+        ['Age', '10-year band (47 &rarr; 40-49); 85+ top-coded; 20-year band when the patient\'s cell is sparse',
+         'Bands always contain the true age. Fixed 5-year bands left 9/50 profiles re-identifiable, fixed 10-year 4/50, adaptive 0/50'],
         ['DOB', 'Birth-decade band in text/CSV; shifted date in FHIR birthDate (stays valid R4)',
          'Exact DOB never survives'],
-        ['Village, house, locality', 'Removed; district kept', 'District keeps public-health value'],
-        ['PIN', '3-digit prefix (226XXX); removed at higher risk', 'Sorting-district granularity only'],
+        ['Village, house, locality', 'Removed; district kept unless the patient\'s estimated registry cell is &lt; 5 people',
+         'Cell = 4 x patients(district) x share(gender) x share(band); then 20-yr band, then no district (also masked in letterheads)'],
+        ['PIN', '3-digit prefix (226XXX); removed at higher risk', '54 of 93 district probes are given up for privacy'],
         ['Rare diagnosis', 'Kept; demographics around it coarsened (20-yr band, no district, no PIN) if < 3 patients share the ICD code',
          'Utility of diagnosis statistics kept; 3 district values lost'],
     ], [30 * mm, 78 * mm, W - 108 * mm]))
@@ -153,10 +154,10 @@ def build():
         ['Trap patients (pairs linked)', 'language 100%, meaning 100%, re-identification 100%, fragmented 87-89%'],
         ['Direct identifiers surviving', '0 of 1,250 (Aadhaar, ABHA, PAN, phone, email, UHID/IPD); villages/houses/localities 0 of 389'],
         ['Names surviving', 'Devanagari 0/135, Hinglish 2/111, Latin 1/2,587 (all 3 are the allowed doctor name in multi-visit files); canaries 0'],
-        ['Clinical probes kept', '4,852 / 4,855 (99.94%; the 3 are suppressed districts)'],
-        ['Registry attack (age band + gender + district)', 'mean probability on true person 0.16; 4 / 50 profiles at &ge; 0.5'],
+        ['Clinical probes kept', '4,801 / 4,855 (98.9%; all 54 lost are districts suppressed for high-risk patients)'],
+        ['Registry attack (district, gender, band, PIN prefix)', 'profiles &ge; 0.5: 0 / 50 (raw input 10 / 48); records: 0 / 746 (raw 11); mean on true person 0.05 per profile'],
         ['Determinism / other secret', 'byte-identical sanitized/ and records.jsonl; 0 pseudonyms shared across secrets'],
-        ['Speed and memory', '3.8 s, 31 MB (practice); 6x data: 1,200 files in 40 s, 149 MB peak'],
+        ['Speed and memory', '4.6 s, 34 MB (practice); 6x data: 1,200 files in 43 s, 149 MB peak'],
     ], [62 * mm, W - 62 * mm]))
     s.append(P('6. Security design', h2))
     s.append(P('All evidence stays in process memory; no intermediate files are written (the only staging directory '
@@ -166,10 +167,10 @@ def build():
                'no exception payloads. Failed files are quarantined by status only; they are never copied. '
                'If disk staging is ever needed, the plan is AES-GCM with a key derived from the secret (cryptography).'))
     s.append(P('7. Known limitations', h2))
-    s.append(P('&bull; Practice data has only ~50 patients, so k-anonymity cells inside the release are tiny; we tuned on a '
-               'registry attack approximation, not the organisers\' attacker. &bull; Rare-diagnosis protection coarsens '
+    s.append(P('&bull; Practice data has only ~50 patients; the registry size is estimated (4x patients), and our attack is an '
+               'approximation of the organisers\' attacker (it ignores names, which we remove). &bull; Rare-diagnosis protection coarsens '
                'demographics; the diagnosis itself plus exact stay length can still single out a patient for an attacker '
-               'who already knows both. &bull; Fragmented notes with only a first name and no relative stay unlinked by '
+               'who already knows both (targeted attack A5 was not measured). &bull; Fragmented notes with only a first name and no relative stay unlinked by '
                'design. &bull; Context rules can still miss names in unseen label styles; free-text village names without '
                'markers may survive. &bull; Scaling on duplicated data grew faster than linear (6x data, ~10x time) '
                'because large blocks share identifiers. &bull; No ML model is used; all rules were written during the event.', small))

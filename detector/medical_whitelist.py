@@ -29,3 +29,6 @@ STOPWORDS.update({'दस्त', 'और'})
 CLINICAL.append(re.compile(r'\bASHA\s+worker(?:s)?\b', re.I))
 
 CLINICAL.append(re.compile(r'\bH/O\s+[A-Za-z0-9 /]+?\s+\d+\s+yrs?\s+back\b', re.I))
+
+# Hindi document headings and form labels (structural words, not names).
+STOPWORDS.update("डिस्चार्ज सारांश पर्चा ओपीडी आईपीडी रिपोर्ट मरीज़ मरीज रोगी नाम पता आयु उम्र लिंग निदान दवा दवाई सलाह जांच परीक्षण भर्ती छुट्टी तारीख दिनांक पंजीकरण अस्पताल वार्ड बिस्तर डॉक्टर चिकित्सक नर्सिंग नोट्स समरी इलाज उपचार सं संख्या मोबाइल".split())

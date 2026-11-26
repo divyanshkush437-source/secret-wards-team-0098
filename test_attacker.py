@@ -211,12 +211,63 @@ def intervals(truth, report, texts):
 AGE_BAND = re.compile(r'(?<!\d)(\d{1,3})-(\d{1,3})(?=\s*(?:Y|y|/|$|वर्ष|"))|(\d{2})\+')
 
 
-def registry_attack(kit: Path, truth, report, texts, records):
-    """Sweeney-style profile attack: pseudonym profile -> registry candidates.
+def record_text(out_root_texts, file, loc):
+    """Text of one exported record: a CSV/TSV row, a JSON pointer target, or a doc."""
+    import csv as _csv
+    import io as _io
+    text = out_root_texts.get(file, '')
+    if loc.startswith('row:'):
+        rows = list(_csv.reader(_io.StringIO(text), delimiter='\t' if file.endswith('.tsv') else ','))
+        i = int(loc[4:]) + 1
+        return ' '.join(rows[i]) if i < len(rows) else ''
+    if loc.startswith('/'):
+        try:
+            node = json.loads(text)
+            for part in loc.strip('/').split('/'):
+                part = part.replace('~1', '/').replace('~0', '~')
+                node = node[int(part)] if isinstance(node, list) else node[part]
+            return json.dumps(node, ensure_ascii=False)
+        except (ValueError, KeyError, IndexError, TypeError):
+            return text
+    return text
 
-    Evidence used: age band, gender, district strings visible in each
-    pseudonym's records. Risk = probability mass on the true person
-    (uniform over surviving candidates), as in docs/ATTACKS.md A2-A4.
+
+def candidates(reg, districts, blob):
+    """Registry filters in the documented order; a filter that would empty the set is skipped."""
+    cands = reg
+
+    def narrow(keep):
+        nonlocal cands
+        got = [c for c in cands if keep(c)]
+        cands = got or cands
+
+    dist = [d for d in districts if re.search(r'(?<!\w)' + re.escape(d) + r'(?!\w)', blob)]
+    if dist:
+        narrow(lambda c: c['district'] in dist)
+    g = re.findall(r'(?<![A-Za-z])(?:/\s*|Sex:\s*|gender\W+|Gender,?\s*)([MF])\b', blob)
+    g += ['F' for _ in re.findall(r'"gender": "female"', blob)] + ['M' for _ in re.findall(r'"gender": "male"', blob)]
+    if g:
+        narrow(lambda c: c['gender'] == g[0])
+    m = AGE_BAND.search(blob)
+    if m:
+        lo, hi = (int(m[1]), int(m[2])) if m[1] else (int(m[3]), 130)
+        narrow(lambda c: lo - 1 <= int(c['age'] or -9) <= hi + 2)
+    pins = re.findall(r'(?<!\d)([1-9]\d{5})(?!\d)', blob)
+    if pins:
+        narrow(lambda c: c['pin'] in pins)
+    prefixes = re.findall(r'(?<!\d)([1-9]\d{2})(?:XXX|\*\*\*)', blob)
+    if prefixes:
+        narrow(lambda c: c['pin'][:3] in prefixes)
+    return cands
+
+
+def registry_attack(kit: Path, truth, report, texts, records):
+    """Sweeney-style attack (docs/ATTACKS.md A2-A4), our approximation.
+
+    Record level: every exported patient record is attacked on its own.
+    Profile level: records sharing a pseudonym are pooled and attacked again.
+    Evidence: district, gender, age band, PIN / PIN prefix visible in the output.
+    Risk = probability mass on the true person (uniform over candidates).
     """
     import csv
     reg = list(csv.DictReader((kit / 'dev/attacker/registry.csv').open(encoding='utf-8')))
@@ -229,45 +280,33 @@ def registry_attack(kit: Path, truth, report, texts, records):
             if unit.get('patient'):
                 truth_patient[(out, loc)] = unit['patient']
     rid = {pt: info['rid'] for pt, info in truth['patients'].items()}
+
+    def risk(blob, pt):
+        cands = candidates(reg, districts, blob)
+        return (1 / len(cands)) if any(c['rid'] == rid[pt] for c in cands) else 0.0
+
+    record_risks = []
+    for r in records:
+        pt = truth_patient.get((r['file'], r['loc']))
+        if pt in rid:
+            record_risks.append(risk(record_text(texts, r['file'], r['loc']), pt))
     profiles = defaultdict(list)
     for r in records:
         if r['patient']:
             profiles[r['patient']].append(r)
-    risks, confident = [], 0
+    profile_risks = []
     for psn, recs in profiles.items():
-        votes = Counter(truth_patient.get((r['file'], r['loc'])) for r in recs)
-        pt = votes.most_common(1)[0][0]
-        if not pt or pt not in rid:
-            continue
-        blob = ' '.join(_record_text(texts.get(r['file'], ''), r['loc'], psn) for r in recs)
-        cands = reg
-        dist = [d for d in districts if re.search(r'(?<!\w)' + re.escape(d) + r'(?!\w)', blob)]
-        if dist:
-            narrowed = [c for c in cands if c['district'] in dist]
-            cands = narrowed or cands
-        g = re.findall(r'(?<![A-Za-z])(?:/\s*|Sex:\s*|gender\W+)([MF])\b', blob)
-        if g:
-            narrowed = [c for c in cands if c['gender'] == g[0]]
-            cands = narrowed or cands
-        m = AGE_BAND.search(blob)
-        if m:
-            lo, hi = (int(m[1]), int(m[2])) if m[1] else (int(m[3]), 130)
-            narrowed = [c for c in cands if lo - 1 <= int(c['age'] or -9) <= hi + 2]
-            cands = narrowed or cands
-        hit = any(c['rid'] == rid[pt] for c in cands)
-        risk = (1 / len(cands)) if hit else 0.0
-        risks.append(risk)
-        confident += risk >= 0.5
-    return {'profiles_attacked': len(risks),
-            'mean_true_person_probability': round(sum(risks) / len(risks), 4) if risks else 0,
-            'profiles_reidentified_conf>=0.5': confident}
-
-
-def _record_text(text, loc, psn):
-    if loc.startswith('row:'):
-        lines = text.splitlines()
-        return ' '.join(l for l in lines if psn in l)
-    return text if psn in text else ''
+        pt = Counter(truth_patient.get((r['file'], r['loc'])) for r in recs).most_common(1)[0][0]
+        if pt in rid:
+            blob = ' '.join(record_text(texts, r['file'], r['loc']) for r in recs)
+            profile_risks.append(risk(blob, pt))
+    mean = lambda xs: round(sum(xs) / len(xs), 4) if xs else 0
+    return {'records_attacked': len(record_risks),
+            'record_mean_true_person_probability': mean(record_risks),
+            'records_reidentified_conf>=0.5': sum(x >= 0.5 for x in record_risks),
+            'profiles_attacked': len(profile_risks),
+            'profile_mean_true_person_probability': mean(profile_risks),
+            'profiles_reidentified_conf>=0.5': sum(x >= 0.5 for x in profile_risks)}
 
 
 # ------------------------------------------------------------------ scale
