@@ -101,7 +101,7 @@ def transliterate(text: str) -> str:
 # --------------------------------------------------------------------------
 HONORIFICS = set('ji jee sahab saheb sahib didi bhai bhaiya babu shri sri shree smt shrimati kumari km kum mr mrs ms miss master baby behenji behen bahen amma mataji pitaji chacha chachi bibi begum sardar pt pandit late'.split())
 # Generic particles: they never identify anyone on their own (see DATASET.md).
-GENERIC = set('kumar kumari devi singh bano begum khatoon bibi lal prasad bai rani mohammad md mohd ram chand nath'.split())
+GENERIC = set('kumar kumari devi singh bano begum khatoon bibi prasad bai rani mohammad md mohd'.split())
 _VARIANTS = {
     'md': 'mohammad', 'mohd': 'mohammad', 'mohamad': 'mohammad', 'mohammed': 'mohammad',
     'muhammad': 'mohammad', 'muhammed': 'mohammad', 'mohamed': 'mohammad', 'mohmmad': 'mohammad',
@@ -145,9 +145,15 @@ def name_tokens(name: str) -> tuple:
 
 
 def is_generic(token: str) -> bool:
-    # Phonetic comparison only for transliterated spellings ("baano", "devee"),
-    # so a real name such as "Chanda" is not mistaken for the particle "Chand".
-    return token in GENERIC or (re.search(r'aa|ee|oo|ii|uu', token) is not None and simplify(token) in _GENERIC_SIMPLE)
+    # Phonetic comparison only for transliterated spellings of the particle
+    # itself ("baano", "devee", "kumaar"): same skeleton and at most one extra letter,
+    # so real names such as "Chanda" / "चंदा" are never mistaken for a particle.
+    if token in GENERIC:
+        return True
+    if re.search(r'aa|ee|oo|ii|uu', token) is None:
+        return False
+    s = simplify(token)
+    return any(s == simplify(g) and len(token) <= len(g) + 1 for g in GENERIC)
 
 
 def identifying(tokens) -> tuple:
@@ -220,6 +226,13 @@ def token_match(a: str, b: str) -> float:
     db = re.sub(r'(?<=[^aeiou])a(?=[^aeiou])', '', sb)
     if da == db and len(da) >= 3:
         return 0.95
+    # Regular Hindi-English spelling alternations: Verma/Varma (e~a before r),
+    # Vinod/Binod and Vasanti/Basanti (v~b).
+    alt = lambda x: re.sub(r'e(?=r)', 'a', x.replace('v', 'b'))
+    if alt(sa) == alt(sb) and len(sa) >= 3:
+        return 0.94
+    if alt(da) == alt(db) and len(da) >= 3:
+        return 0.94
     return max(jaro_winkler(sa, sb), jaro_winkler(da, db) - 0.03)
 
 

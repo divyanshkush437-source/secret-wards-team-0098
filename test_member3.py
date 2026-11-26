@@ -33,6 +33,14 @@ class TransliterationTests(unittest.TestCase):
                        ('सलमा अंसारी', 'Salma Ansari'), ('फ़ातिमा बानो', 'Fatima Bano')]:
             self.assertEqual(self.same(hi, en), 'full', en)
 
+    def test_hindi_english_regular_alternations(self):
+        for hi, en in [('वर्मा', 'Verma'), ('वर्मा', 'Varma'), ('विनोद', 'Binod'), ('बसंती', 'Vasanti'),
+                       ('चंदा', 'Chanda'), ('राम प्रसाद', 'Ram Prasad'), ('सविता', 'Sabita'), ('मोहम्मद आरिफ़', 'Md. Arif'),
+                       ('ज़ैनब', 'Zenab'), ('शिवगढ़', 'Shivgarh')]:
+            self.assertIn(self.same(hi, en), ('full', 'partial'), en)
+        for hi, en in [('रमेश', 'Rajesh'), ('आशा', 'Usha'), ('रेखा', 'Rakha'), ('शेखर', 'Shankar'), ('मीना', 'Meera')]:
+            self.assertNotIn(self.same(hi, en), ('full', 'partial'), en)
+
     def test_spelling_variants(self):
         self.assertEqual(self.same('Md. Shahid', 'Mohammad Shahid'), 'full')
         self.assertEqual(self.same('Geeta Chauhan', 'Gita Chouhan'), 'full')
