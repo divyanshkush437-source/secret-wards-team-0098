@@ -151,6 +151,96 @@ def leaks(truth, report, texts):
     return {'leaked_over_mentions': rates, 'canary_in_report': canary_hits}
 
 
+# ------------------------------------------------------------------ kit self-check
+def _kit_norm(s):
+    return " ".join(unicodedata.normalize("NFKC", s).casefold().split())
+
+
+_KIT_B64 = re.compile(r"[A-Za-z0-9+/]{24,}={0,2}")
+
+
+def _kit_read(p: Path) -> str:
+    try:
+        raw = p.read_bytes()[: 50 * 1024 * 1024]
+    except OSError:
+        return ""
+    text = raw.decode("utf-8", errors="replace")
+    extra = []
+    for m in _KIT_B64.finditer(text):
+        tok = m.group(0)
+        try:
+            extra.append(base64.b64decode(tok + "=" * (-len(tok) % 4)).decode("utf-8", errors="ignore"))
+        except Exception:
+            pass
+    return text + "\n" + "\n".join(extra) if extra else text
+
+
+def kit_selfcheck(kit: Path, out: Path, show=0):
+    """Same measures as the team kit's check_dev.py (exact-surface leak scan per
+    entity, preserve probes, canaries anywhere in the output, pairwise linkage)."""
+    truth = json.loads((kit / 'dev/truth/truth.json').read_text(encoding='utf-8'))
+    san = out / 'sanitized'
+    report = json.loads((out / 'report.json').read_text(encoding='utf-8'))
+    renamed = {e.get('input_sha256'): e.get('output') for e in report.get('files') or []}
+    leaks, kept, by_type_script = Counter(), Counter(), Counter()
+    tot_script, by_script, tot_channel, by_channel = Counter(), Counter(), Counter(), Counter()
+    examples = []
+    pres_ok = pres_all = 0
+    lost = Counter()
+    copied_raw = 0
+    for rel, f in truth['files'].items():
+        declared = renamed.get(f['sha256'])
+        out_rel = str(declared).replace('sanitized/', '', 1) if declared else rel
+        p = san / out_rel
+        exists = p.is_file()
+        text = _kit_norm(_kit_read(p)) if exists else ''
+        src = kit / 'dev/input' / rel
+        if any(u['entities'] for u in f['units'].values()) and exists and f.get('expect') == 'either' \
+                and src.is_file() and p.read_bytes() == src.read_bytes():
+            copied_raw += 1
+        fname = _kit_norm(out_rel)
+        for loc, u in f['units'].items():
+            for e in u['entities']:
+                if e.get('type') == 'CANARY':
+                    continue
+                tot_script[e['script']] += 1
+                tot_channel[e['channel']] += 1
+                surface = _kit_norm(e['surface'])
+                hay = fname if e['channel'] == 'filename' else text
+                hit = bool(surface) and surface in hay if (exists or e['channel'] == 'filename') else False
+                if hit:
+                    leaks[e['type']] += 1
+                    by_script[e['script']] += 1
+                    by_channel[e['channel']] += 1
+                    if len(examples) < show:
+                        examples.append((e['type'], e['script'], e['channel'], rel, loc, e['surface']))
+                else:
+                    kept[e['type']] += 1
+            if exists:
+                for pv in u.get('preserve') or []:
+                    pres_all += 1
+                    ok = _kit_norm(pv['text']) in text
+                    pres_ok += ok
+                    if not ok:
+                        lost[pv['kind']] += 1
+    everything = []
+    for dp, _, fn in os.walk(out):
+        for n in fn:
+            everything.append(n)
+            everything.append(_kit_read(Path(dp) / n))
+    everything = _kit_norm('\n'.join(everything))
+    canaries = {_kit_norm(e['surface']) for f in truth['files'].values() for u in f['units'].values()
+                for e in u['entities'] if e.get('type') == 'CANARY'}
+    total = sum(leaks.values()) + sum(kept.values())
+    return {'pii_leaked': f'{sum(leaks.values())}/{total}',
+            'leaked_by_type': {t: f'{leaks[t]}/{leaks[t] + kept[t]}' for t in sorted(set(leaks) | set(kept))},
+            'leaked_by_script': {s_: f'{by_script[s_]}/{tot_script[s_]}' for s_ in sorted(tot_script)},
+            'leaked_by_channel': {c: f'{by_channel[c]}/{tot_channel[c]}' for c in sorted(tot_channel)},
+            'canaries_found': f'{sum(1 for c in canaries if c and c in everything)}/{len(canaries)}',
+            'medical_kept': f'{pres_ok}/{pres_all}', 'medical_lost_by_kind': dict(lost.most_common()),
+            'raw_copies': copied_raw, 'examples': examples}
+
+
 # ------------------------------------------------------------------ utility
 def preserved(truth, report, texts):
     """Share of clinical preserve-probes (doses, vitals, labs, doctors ...) kept."""
@@ -463,6 +553,7 @@ def main():
     ap.add_argument('--kit', required=True, type=Path)
     ap.add_argument('--output', type=Path)
     ap.add_argument('--scale', type=int, default=0)
+    ap.add_argument('--show', type=int, default=0, help='list this many leak examples (local debugging only)')
     args = ap.parse_args()
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     result = {}
@@ -475,6 +566,7 @@ def main():
         result['utility'] = preserved(truth, report, texts)
         result['attack'] = registry_attack(args.kit, truth, report, texts, records)
         result['targeted_attack'] = targeted_attack(args.kit, truth, report, texts, records)
+        result['kit_selfcheck'] = kit_selfcheck(args.kit, args.output, args.show)
     if args.scale:
         result['scale'] = scale_run(args.kit, args.scale)
     print(json.dumps(result, indent=2))

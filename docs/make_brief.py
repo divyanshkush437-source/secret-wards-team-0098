@@ -152,8 +152,8 @@ def build():
         ['Files sanitized / quarantined / records', '193 / 7 / 822 records, 775 linked'],
         ['Linkage pairwise precision / recall / F0.5', '1.000 / 1.000 / 1.000 (6,892 linkable pairs); homonyms 2/2 separated; all trap patients 100%'],
         ['Unseen-format copy (renamed columns/keys/labels, dd.mm.yyyy dates, UPPERCASE names)', 'precision / recall 1.000 / 1.000, 0 IDs or villages leaked, 23/23 intervals, contract OK'],
-        ['Direct identifiers surviving', '0 of 1,250 (Aadhaar, ABHA, PAN, phone, email, UHID/IPD); villages/houses/localities 0 of 389'],
-        ['Names surviving', 'Devanagari 0/135, Hinglish 2/111, Latin 1/2,587 (all 3 are the allowed doctor name in multi-visit files); canaries 0'],
+        ['Kit self-check rules (check_dev.py, exact text per entity)', '0 / 3,230 personal-data pieces visible: names, relatives, DOB, PIN, Aadhaar, ABHA, PAN, phone, email, UHID, house, village; '
+         'all scripts (Latin, Devanagari, Hinglish) and hiding places (file names, headers, keys, metadata, base64); canaries 0 / 4; raw copies 0'],
         ['Clinical probes kept', '4,787 / 4,855 (98.6%): 47 districts of high-risk patients, 21 names of single-patient diseases (ICD code kept)'],
         ['Registry attack (district, gender, band, PIN prefix)', 'profiles &ge; 0.5: 0 / 48 (raw input 10 / 48); records: 0 / 746 (raw 11); mean on true person 0.05'],
         ['Targeted attack (known visit date, hospital, condition, stay)', '4 / 14 known people at &ge; 0.5 (raw 2 / 14); global shift not recoverable; 0 decoys claimed'],

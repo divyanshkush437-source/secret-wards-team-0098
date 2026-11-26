@@ -66,6 +66,11 @@ global-shift recovery): 4 of 14 known people at ≥ 0.5 (raw input 2 of 14), 0 d
 claimed, no global shift recoverable. The remaining hits come from exact stay lengths and
 condition + demographics; removing every hospital name only moved the mean 0.24 → 0.23.
 
+Kit self-check (`check_dev.py` rules, ported as `kit_selfcheck` in `test_attacker.py`):
+0 of 3,230 personal-data pieces visible on the practice set and on the unseen-format copy,
+0 of 4 canaries, 0 raw copies, 4,787 of 4,855 medical values kept (all 68 lost are the
+deliberate privacy generalisations above).
+
 Unseen-format check: a copy of the practice set with renamed CSV headers and JSON keys,
 reworded note labels, `dd.mm.yyyy` dates and UPPERCASE names gives linkage 1.000 / 1.000,
 zero identifier/village leaks, 23/23 intervals and a clean contract check.

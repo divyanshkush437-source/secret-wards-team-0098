@@ -27,7 +27,7 @@ The normal command (also in raksha.toml) runs the full pipeline through
 |---|---|
 | Files sanitized / quarantined | 193 / 7 (822 records, 775 linked) |
 | Linkage precision / recall / F0.5 | 1.000 / 1.000 / 1.000; homonym pairs 2/2 kept apart; every trap patient 100% |
-| Direct identifiers surviving | 0 of 1,250 Aadhaar/ABHA/PAN/phone/email/UHID mentions |
+| Personal data visible (kit `check_dev.py` rules) | 0 / 3,230 across every type, script and hiding place; canaries 0 / 4; raw copies 0 |
 | Clinical values kept | 4,787 / 4,855 (47 districts and 21 single-patient disease names generalised for privacy) |
 | Admission/discharge intervals | 22 / 22 exact after per-patient shifting |
 | Registry attack (district, gender, band, PIN prefix) | 0/48 profiles and 0/746 records re-identified at ≥ 0.5 (raw input: 10 and 11) |
