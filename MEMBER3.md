@@ -8,7 +8,8 @@ No universal accuracy, zero-leak or complete anonymity claim is supported.
 
 | File | Role |
 |---|---|
-| `linker.py` | Devanagari→Latin transliteration, name folding, Jaro-Winkler, blocking, scoring, conflict-safe clustering |
+| `linker.py` | Name folding, Jaro-Winkler, blocking, scoring, conflict-safe clustering; stable transliteration API |
+| `transliteration.py` | indic-transliteration character conversion with compatible Hindi schwa/spelling rules |
 | `privacy.py` | HMAC pseudonyms, per-patient date shifts, age/DOB bands, PIN generalisation, risk levels |
 | `team_processor.py` | The final `Processor(secret)` the runner loads: observe → finish → clean |
 | `config/privacy.json` | Tunable privacy rules (band widths, shift range, k thresholds) |
@@ -24,7 +25,7 @@ Patient outrank names in narrative), relatives (S/o, W/o, `pati ka naam`, FHIR c
 UHID/IPD/Aadhaar/ABHA/PAN/email, phone, DOB, age with the record's latest event year,
 gender, village tokens and ICD codes. Masked Aadhaar suffixes are ignored.
 
-Names are transliterated (schwa-aware), honorifics dropped, variants folded
+Names are transliterated using indic-transliteration (with a schwa-aware adapter), honorifics dropped, variants folded
 (Mohd/Md./Mohammad, Laxmi/Lakshmi, aa/a, ph/f, au/ou) and compared token-by-token
 with Jaro-Winkler, independent of order. Generic particles (Kumar, Devi, Bano, Md.)
 never identify anyone on their own.
@@ -111,8 +112,8 @@ zero identifier/village leaks, 23/23 intervals and a clean contract check.
 ## Reproduce
 
 ```sh
-python3 -m unittest -q
-RAKSHA_SECRET=practice python3 main.py --input KIT/dev/input --output out
+.venv/bin/python -m unittest -q
+RAKSHA_SECRET=practice .venv/bin/python main.py --input KIT/dev/input --output out
 python3 contract_check.py --input KIT/dev/input --output out
 python3 test_attacker.py --kit KIT --output out
 python3 test_attacker.py --kit KIT --scale 6

@@ -1,0 +1,47 @@
+[
+  {
+    "seed": 2117101,
+    "before_score": 96.65154515280672,
+    "after_score": 96.65154515280672,
+    "before_linkage": [
+      1.0,
+      1.0
+    ],
+    "after_linkage": [
+      1.0,
+      1.0
+    ],
+    "sanitized_files_identical": true,
+    "manifest_identical": true
+  },
+  {
+    "seed": 2117102,
+    "before_score": 94.21356973798257,
+    "after_score": 94.21356973798257,
+    "before_linkage": [
+      1.0,
+      0.9964552973611658
+    ],
+    "after_linkage": [
+      1.0,
+      0.9964552973611658
+    ],
+    "sanitized_files_identical": true,
+    "manifest_identical": true
+  },
+  {
+    "seed": 2117103,
+    "before_score": 97.28294377809688,
+    "after_score": 97.28294377809688,
+    "before_linkage": [
+      1.0,
+      1.0
+    ],
+    "after_linkage": [
+      1.0,
+      1.0
+    ],
+    "sanitized_files_identical": true,
+    "manifest_identical": true
+  }
+]

@@ -102,10 +102,8 @@ def detect_text(text: str, field_hint: str = '', policy_path: str | None = None)
             value = text.strip()
             if re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9/-]{1,39}', value) and any(c.isdigit() for c in value):
                 add(len(text)-len(text.lstrip()), len(text.rstrip()), 'ID_UHID', value.upper(), .87)
-    for m in p.PHONE.finditer(text):
-        norm = p.normalize_phone(m[0])
-        if norm:
-            add(*m.span(), 'PHONE', norm)
+    for start, end, normalized in p.phone_spans(text):
+        add(start, end, 'PHONE', normalized)
     for m in p.ISO_TIMESTAMP.finditer(text):
         norm=p.normalize_timestamp_date(m[0])
         if norm:

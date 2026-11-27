@@ -27,73 +27,9 @@ from dataclasses import dataclass, field
 from itertools import combinations
 
 # --------------------------------------------------------------------------
-# Devanagari -> Latin transliteration (Hunterian-style, schwa-aware)
-# --------------------------------------------------------------------------
-_VOWELS = {
-    'अ': 'a', 'आ': 'aa', 'इ': 'i', 'ई': 'ee', 'उ': 'u', 'ऊ': 'oo', 'ऋ': 'ri',
-    'ए': 'e', 'ऐ': 'ai', 'ओ': 'o', 'औ': 'au', 'ऑ': 'o', 'ऍ': 'e',
-}
-_MATRAS = {
-    'ा': 'aa', 'ि': 'i', 'ी': 'ee', 'ु': 'u', 'ू': 'oo', 'ृ': 'ri', 'े': 'e',
-    'ै': 'ai', 'ो': 'o', 'ौ': 'au', 'ॉ': 'o', 'ॅ': 'e',
-}
-_CONSONANTS = {
-    'क': 'k', 'ख': 'kh', 'ग': 'g', 'घ': 'gh', 'ङ': 'n', 'च': 'ch', 'छ': 'chh',
-    'ज': 'j', 'झ': 'jh', 'ञ': 'n', 'ट': 't', 'ठ': 'th', 'ड': 'd', 'ढ': 'dh',
-    'ण': 'n', 'त': 't', 'थ': 'th', 'द': 'd', 'ध': 'dh', 'न': 'n', 'प': 'p',
-    'फ': 'ph', 'ब': 'b', 'भ': 'bh', 'म': 'm', 'य': 'y', 'र': 'r', 'ल': 'l',
-    'व': 'v', 'श': 'sh', 'ष': 'sh', 'स': 's', 'ह': 'h', 'ळ': 'l',
-    'क़': 'q', 'ख़': 'kh', 'ग़': 'g', 'ज़': 'z', 'ड़': 'r', 'ढ़': 'rh', 'फ़': 'f', 'य़': 'y',
-}
-_NUKTA_BASE = {'क': 'क़', 'ख': 'ख़', 'ग': 'ग़', 'ज': 'ज़', 'ड': 'ड़', 'ढ': 'ढ़', 'फ': 'फ़', 'य': 'य़'}
-_VIRAMA, _NUKTA, _ANUSVARA, _CHANDRABINDU, _VISARGA = '्', '़', 'ं', 'ँ', 'ः'
-
-
-def transliterate(text: str) -> str:
-    """Transliterate Devanagari runs to Latin; other characters pass through."""
-    text = unicodedata.normalize('NFC', text)
-    out = []
-    i = 0
-    n = len(text)
-    while i < n:
-        ch = text[i]
-        if ch in _CONSONANTS or ch in _NUKTA_BASE:
-            if i + 1 < n and text[i + 1] == _NUKTA and ch in _NUKTA_BASE:
-                ch = _NUKTA_BASE[ch]
-                i += 1
-            out.append(_CONSONANTS.get(ch, ''))
-            nxt = text[i + 1] if i + 1 < n else ''
-            if nxt == _VIRAMA:
-                i += 2
-                continue
-            if nxt in _MATRAS:
-                out.append(_MATRAS[nxt])
-                i += 2
-                continue
-            # Inherent schwa. Hindi drops it word-finally unless the consonant
-            # closes a conjunct (आदित्य -> aditya, but राम -> ram).
-            word_end = not (nxt and ('ऀ' <= nxt <= 'ॿ') and nxt not in (_ANUSVARA, _CHANDRABINDU, _VISARGA))
-            conjunct = i >= 1 and text[i - 1] == _VIRAMA
-            if not word_end or conjunct or nxt in (_ANUSVARA, _CHANDRABINDU):
-                out.append('a')
-            i += 1
-            continue
-        if ch in _VOWELS:
-            out.append(_VOWELS[ch])
-        elif ch in (_ANUSVARA, _CHANDRABINDU):
-            out.append('n')
-        elif ch == _VISARGA:
-            out.append('h')
-        elif ch in _MATRAS:
-            out.append(_MATRAS[ch])
-        elif '०' <= ch <= '९':
-            out.append(str(ord(ch) - 0x966))
-        elif ch in (_VIRAMA, _NUKTA, '‌', '‍'):
-            pass
-        else:
-            out.append(ch)
-        i += 1
-    return ''.join(out)
+# Transliteration is provided by indic-transliteration through a Hindi adapter.
+# Keep this import public: callers use linker.transliterate and name_tokens.
+from transliteration import transliterate
 
 
 # --------------------------------------------------------------------------

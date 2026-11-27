@@ -9,7 +9,7 @@ certification or a guarantee of 100% on hidden data.
 | Requirement | Evidence / status |
 |---|---|
 | No LLM, generative model or pretrained transformer | Runtime source/import audit: rules and classical string matching only. Training tools are development-only; no model is loaded. |
-| Offline, CPU-only | No network client in runtime; `urllib.parse` only decodes strings. Fresh runs completed with Python socket operations blocked. Core uses the standard library and a single process. |
+| Offline, CPU-only | No network client in runtime; `urllib.parse` only decodes strings. Fresh runs completed with Python socket operations blocked. Runtime uses a single process; phonenumbers and indic-transliteration are installed at setup and work offline (see ../library-integration-2026-11-27.md). |
 | 2 CPUs, 4 GB, 15 minutes | Tested cases comfortably below memory/time limits. Mac tests do not reproduce the organizer's full Linux namespace/cgroup sandbox or establish worst-case scaling. |
 | Synthetic data only | Tests use organizer practice data or the team's synthetic generators. No real patient records added. |
 | No hardcoded patient identities | Generic label, Unicode and relationship rules; runtime does not read test truth, attacker files, seeds or benchmark outputs. Examples in tests/comments are not runtime identity tables. |

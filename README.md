@@ -7,11 +7,12 @@ rules, gazetteer-free context patterns and classical string/phonetic matching wr
 during the event. The 2-page brief is [Project_Brief.pdf](Project_Brief.pdf).
 
 ```sh
-python3 -m pip install -r requirements.txt     # optional; core is standard library only
-python3 -m unittest -q                         # 196 tests
-python3 contract_check.py --input INPUT --output OUTPUT   # official format rules + stricter checks
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt   # required, during setup
+.venv/bin/python -m unittest -q                      # 201 tests
+.venv/bin/python contract_check.py --input INPUT --output OUTPUT   # official format rules + stricter checks
 # RAKSHA_SECRET must already be set privately in your environment.
-python3 main.py --input /path/to/input --output /path/to/fresh_output
+.venv/bin/python main.py --input /path/to/input --output /path/to/fresh_output
 ```
 
 The normal command (also in raksha.toml) runs the full pipeline through
@@ -21,6 +22,18 @@ The normal command (also in raksha.toml) runs the full pipeline through
 - Member 2's detector, run instructions and integration contract: [MEMBER2.md](MEMBER2.md).
 - Member 3's linkage, pseudonyms, privacy layer and red-team results: [MEMBER3.md](MEMBER3.md).
 
+## Library integration
+
+Phone matching/normalization now uses `phonenumbers==9.0.44`. Devanagari character
+conversion uses `indic-transliteration==2.3.83`, with a Hindi pronunciation adapter
+that preserves existing name keys. `linker.py` retains clustering and its public API;
+`detector/patterns.py` retains non-phone detection patterns. The optional phone fallback
+and handwritten Devanagari alphabet tables have been removed.
+
+[Before/after validation](docs/library-integration-2026-11-27.md): 735 cleaned files
+and all linkage manifests are byte-identical on three benchmarks, with unchanged
+scores. Additional tests cover international numbers, grouping and extensions.
+
 ## Latest privacy tuning and guideline audit
 
 See [current results and method](docs/privacy-tuning-2026-11-27/README.md) and the
@@ -29,7 +42,7 @@ is not established.** The new default (`max_level: 3`) removes district informat
 for sparse patients after age widening; `max_level: 2` retains the previous geography policy.
 Fixes cover compound guardian labels, conflicting family evidence, Unicode identity
 extraction, and invalid FHIR encounters. Core remains rule-based, with no model training.
-196 tests pass. Earlier headline scores below refer to earlier revisions and datasets.
+201 tests pass. Earlier headline scores below refer to earlier revisions and datasets.
 
 ## Historical practice results (official kit `dev/`, measured with `test_attacker.py`)
 
@@ -61,9 +74,9 @@ The detector-only mode masks identifiers and fine-grained locations but leaves
 DOB, dates, age and gender unchanged and does not link patients. It is an
 integration checkpoint, not an anonymized research release. Synthetic data only.
 
-Core execution needs only the Python standard library. The optional detector
-requirements add phone validation, YAML editing and development tools; they are
-not automatically installed or required by the submission entry point.
+Core requires pinned `phonenumbers` and `indic-transliteration` packages installed
+by setup. Runtime remains CPU-only and offline, with no model downloads. The
+optional detector requirements add YAML editing and development tools.
 
 ## How the parts fit together
 

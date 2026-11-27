@@ -108,12 +108,12 @@ def build():
         ['Ingestion', 'Encoding sniffing (BOM, UTF-16, cp1252 fallback), strict CSV, duplicate-key / NaN / depth-limited JSON. '
          'Anything unparseable or unsupported (XML, PDF, JPEG, truncated, 1,500-deep JSON) is quarantined, never copied. '
          'Arrays of records get their own RFC 6901 locators; file names with PII are renamed by keyed HMAC.'],
-        ['Detection', 'Bounded regex for Aadhaar, ABHA, PAN, UHID/IPD, phones (incl. Devanagari digits), PIN, dates; '
+        ['Detection', 'Bounded regex for Aadhaar, ABHA, PAN, UHID/IPD, PIN and dates; phonenumbers for phone formats and E.164; '
          'context rules for S/o, W/o, D/o, C/O, honorifics (ji, sahab, didi) and labels in all three scripts; a '
          'medical shield (doses, 1-0-1, vitals, eponyms like Parkinson\'s) and Dr.-prefix protection. Unseen labels '
          'such as <i>Naam</i>, <i>Umar</i>, <i>Janm Tithi</i> are recognised after transliteration.'],
         ['Linkage', 'Each record becomes evidence (names, relatives, IDs, phone, DOB, age + reference year, gender, village). '
-         'Devanagari is transliterated with schwa deletion, variants are folded (Mohd/Md., aa/a, ph/f, au/ou), tokens '
+         'indic-transliteration plus a Hindi schwa adapter converts Devanagari; variants are folded (Mohd/Md., aa/a, ph/f, au/ou), tokens '
          'compared with Jaro-Winkler. Blocking on IDs, phones and phonetic keys; Fellegi-Sunter style weights '
          '(ID 10, phone 5, full name 5, relative 4, DOB 4, village 2, age 1; threshold 7). Hard vetoes on gender, DOB, '
          'birth year and conflicting full names; a merge is refused if the <i>merged cluster</i> would conflict, which stops '
@@ -155,7 +155,7 @@ def build():
         ['Clinical preservation probes', '3906 / 3920; 3674 / 3689; 3608 / 3620. Lost values are districts'],
         ['Admission / discharge intervals', '157 / 157; 149 / 149; 146 / 146. No unshifted date surfaces flagged'],
         ['Targeted known-person identifications', '7 / 36; 13 / 36; 7 / 36. Residual re-identification risk remains'],
-        ['Validation', '196 unit tests; official submission checks pass; 106/106 output bundles pass independent FHIR resource-model checks'],
+        ['Validation', '201 unit tests; official submission checks pass; 106/106 output bundles pass independent FHIR resource-model checks'],
         ['Limits', 'Not a complete runtime FHIR profile validator. Tested generators are synthetic and team-authored; no learned model'],
     ], [62 * mm, W - 62 * mm]))
     s.append(P('6. Security design', h2))
