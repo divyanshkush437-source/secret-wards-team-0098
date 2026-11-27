@@ -9,7 +9,7 @@ during the event. The 2-page brief is [Project_Brief.pdf](Project_Brief.pdf).
 ```sh
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt   # required, during setup
-.venv/bin/python -m unittest -q                      # 201 tests
+.venv/bin/python -m unittest -q                      # 203 tests
 .venv/bin/python contract_check.py --input INPUT --output OUTPUT   # official format rules + stricter checks
 # RAKSHA_SECRET must already be set privately in your environment.
 .venv/bin/python main.py --input /path/to/input --output /path/to/fresh_output
@@ -21,6 +21,14 @@ The normal command (also in raksha.toml) runs the full pipeline through
 - Member 1's ingestion and output runner: [MEMBER1.md](MEMBER1.md).
 - Member 2's detector, run instructions and integration contract: [MEMBER2.md](MEMBER2.md).
 - Member 3's linkage, pseudonyms, privacy layer and red-team results: [MEMBER3.md](MEMBER3.md).
+
+## Final tuning pass
+
+[Latest measured results](docs/final-tuning-2026-11-27/README.md): regression mean
+96.72/100; fresh synthetic mean 97.06/100. Fixed an explicit patient-name leak in
+clinical metadata. 203 tests and official submission checks pass. The 99–100
+objective was not reached; privacy settings and scoring rules remain unchanged.
+Earlier results below are historical.
 
 ## Library integration
 
@@ -42,7 +50,7 @@ is not established.** The new default (`max_level: 3`) removes district informat
 for sparse patients after age widening; `max_level: 2` retains the previous geography policy.
 Fixes cover compound guardian labels, conflicting family evidence, Unicode identity
 extraction, and invalid FHIR encounters. Core remains rule-based, with no model training.
-201 tests pass. Earlier headline scores below refer to earlier revisions and datasets.
+203 tests pass. Earlier headline scores below refer to earlier revisions and datasets.
 
 ## Historical practice results (official kit `dev/`, measured with `test_attacker.py`)
 

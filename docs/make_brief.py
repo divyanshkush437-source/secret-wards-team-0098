@@ -99,7 +99,7 @@ def build():
                'Member 2: multilingual detection, Member 3: linkage, privacy layer &amp; red-team.'))
     s.append(P('<b>Pitch:</b> an offline, CPU-only, LLM-free pipeline that recognises the same patient across '
                'English, Devanagari and Hinglish records, gives them one keyed pseudonym, and coarsens only the '
-               'demographics that make a patient findable, while every dose, vital, lab value and stay length survives.'))
+               'demographics that make a patient findable, while preserving doses, vitals, lab values and stay lengths in the reported tests.'))
     s.append(P('2. Architecture', h2))
     s.append(Pipeline(W))
     s.append(P('3. How each part works', h2))
@@ -148,14 +148,15 @@ def build():
     s.append(Spacer(1, 3))
     s.append(table([
         ['Measure (three synthetic regression sets)', 'Final result'],
-        ['Dataset seeds', '2117101, 2117102, 2117103; 120 requested patients each. Rerun after an ID-format fix'],
-        ['Practice composite / 100', '96.65, 94.21, 97.28 (mean 96.05). This is not universal accuracy or the official hidden score'],
-        ['Weighted leak matches', '1, 5, 0; zero planted canaries on all three sets'],
+        ['Dataset seeds', '2117101, 2117102, 2117103; 120 requested patients each. Rerun after metadata redaction fix'],
+        ['Practice composite / 100', '96.65, 96.22, 97.28 (mean 96.72). This is not universal accuracy or the official hidden score'],
+        ['Weighted leak matches', '1, 0, 0; zero planted canaries on all three sets'],
         ['Patient linking precision / recall', '100% / 100%; 100% / 99.646%; 100% / 100%'],
         ['Clinical preservation probes', '3906 / 3920; 3674 / 3689; 3608 / 3620. Lost values are districts'],
         ['Admission / discharge intervals', '157 / 157; 149 / 149; 146 / 146. No unshifted date surfaces flagged'],
         ['Targeted known-person identifications', '7 / 36; 13 / 36; 7 / 36. Residual re-identification risk remains'],
-        ['Validation', '201 unit tests; official submission checks pass; 106/106 output bundles pass independent FHIR resource-model checks'],
+        ['Fresh synthetic sets', 'Seeds 3117101/2/3: 96.27, 97.85, 97.07 (mean 97.06); 99–100 target not reached'],
+        ['Validation', '203 unit tests; official submission checks pass; full FHIR profile validation remains incomplete'],
         ['Limits', 'Not a complete runtime FHIR profile validator. Tested generators are synthetic and team-authored; no learned model'],
     ], [62 * mm, W - 62 * mm]))
     s.append(P('6. Security design', h2))
@@ -171,7 +172,7 @@ def build():
                'Keeping exact conditions, stay lengths and demographics leaves re-identification risk. '
                'District suppression improves privacy but loses geographic utility; max_level 2 restores the earlier district-preserving policy. '
                'Ambiguous date order and yearless dates require assumptions. Unsupported inputs are quarantined. '
-               'All results, keys for synthetic reproduction, and limitations are recorded in docs/privacy-tuning-2026-11-27. '
+               'All results, keys for synthetic reproduction, and limitations are recorded in docs/final-tuning-2026-11-27. '
                'No ML model is used; this is rule and policy tuning.', small))
     doc.build(s)
     return OUT

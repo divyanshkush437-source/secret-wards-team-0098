@@ -201,6 +201,13 @@ class Processor(DetectorAdapter):
 
     def _spans(self, text, hint):
         spans = list(super()._spans(text, hint))
+        if hint == '__clinical__':
+            # Metadata such as a ward display can contain an explicitly labelled
+            # patient. Learning the entire display as a clinical phrase must not
+            # shield that name from redaction. The detector still protects actual
+            # medical expressions and doctor contexts.
+            spans.extend(s for s in self._detect(text, hint)
+                         if s.entity_type in {'PERSON', 'RELATIVE'} and s.confidence >= .9)
         if getattr(self, 'slug_pattern', None) is not None and hint not in ('__district__',):
             from detector.medical_whitelist import protected_ranges
             from detector.context_rules import name_candidates
