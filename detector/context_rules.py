@@ -122,6 +122,10 @@ def name_candidates(text, policy, field_hint=''):
             end = token.start()
         if run:
             candidates.append((run[-1].start(), run[0].end(), 'PERSON', .9))
+    for m in re.finditer(r'(?i)\bbed\s+(?:of|for)\s+', text):
+        span = read_name(text, m.end(), honor, True)
+        if span:
+            candidates.append((*span, 'PERSON', .90))
     hint = re.sub(r'[_-]+', ' ', field_hint).casefold()
     if hint in {'name','patient','patient name','given','family','नाम','मरीज'}:
         span = read_name(text, len(text)-len(text.lstrip()), honor, True)

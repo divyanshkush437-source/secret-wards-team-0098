@@ -20,24 +20,26 @@ patient linkage just because two names look similar.
 
 ## Run
 
-Core code uses Python's standard library; Python 3.11+ is recommended. It also runs
-on Python 3.9 using postponed annotations. No weights or network access are used.
+Core requires the pinned packages in `requirements.txt`; install them before offline
+execution. Python 3.9 is tested. No weights or runtime network access are used.
 
 ```sh
-python3 -m unittest -q
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m unittest -q
 # Set RAKSHA_SECRET privately in your shell before running the pipeline.
-python3 main.py --detector-only --input /absolute/path/to/toolkit/dev/input --output my_output_member2
+.venv/bin/python main.py --detector-only --input /absolute/path/to/toolkit/dev/input --output my_output_member2
 python3 /absolute/path/to/toolkit/validate_output.py --input /absolute/path/to/toolkit/dev/input --output my_output_member2
 python3 /absolute/path/to/toolkit/check_dev.py --output my_output_member2
 ```
 
 Use a fresh output directory for each run. Do not print or commit the secret.
 The latest handoff audit is in `MEMBER3_READINESS.md`. Optional packages in `detector_requirements.txt` must be installed before going
-offline. `phonenumbers` adds possibility validation; the no-package fallback checks
-bounded formats and digit lengths. PyYAML supports general YAML policy files; the
-default policy is JSON syntax, which is valid YAML. The spaCy blank PhraseMatcher
-helper is available for extensions, but the active core uses regex context rules.
-Optional dependency paths were not installed or validated in this environment.
+offline. `phonenumbers` is now required for matching and normalization; no optional
+regex-only fallback remains. PyYAML supports general YAML policy files; the default
+policy is JSON syntax, which is valid YAML. The spaCy blank PhraseMatcher helper is
+available for extensions; the active context rules remain regex-based. Neither
+PyYAML nor spaCy is required by the default submission.
 
 ## Exact public contract
 

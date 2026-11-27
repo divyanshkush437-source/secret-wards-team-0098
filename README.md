@@ -7,11 +7,12 @@ rules, gazetteer-free context patterns and classical string/phonetic matching wr
 during the event. The 2-page brief is [Project_Brief.pdf](Project_Brief.pdf).
 
 ```sh
-python3 -m pip install -r requirements.txt     # optional; core is standard library only
-python3 -m unittest -q                         # 189 tests
-python3 contract_check.py --input INPUT --output OUTPUT   # official format rules + stricter checks
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt   # required, during setup
+.venv/bin/python -m unittest -q                      # 201 tests
+.venv/bin/python contract_check.py --input INPUT --output OUTPUT   # official format rules + stricter checks
 # RAKSHA_SECRET must already be set privately in your environment.
-python3 main.py --input /path/to/input --output /path/to/fresh_output
+.venv/bin/python main.py --input /path/to/input --output /path/to/fresh_output
 ```
 
 The normal command (also in raksha.toml) runs the full pipeline through
@@ -21,14 +22,27 @@ The normal command (also in raksha.toml) runs the full pipeline through
 - Member 2's detector, run instructions and integration contract: [MEMBER2.md](MEMBER2.md).
 - Member 3's linkage, pseudonyms, privacy layer and red-team results: [MEMBER3.md](MEMBER3.md).
 
-## Latest continuation and held-out evaluation
+## Library integration
 
-See [the 27 November evaluation](docs/evaluation-2026-11-27/README.md) for the current
-fixes, protocol, aggregate JSON and remaining privacy limitations. New held-out synthetic
-data scored **98.08/100 on the practice approximation**, with 0/5,760 labelled identifier
-leaks, 3,794/3,794 clinical probes preserved and linkage precision/recall 1.000.
-This is not a universal accuracy claim; the targeted attacker still identified 7/36 people.
-The official submission checks and 189 unit tests pass. This work tuned rules, not a model.
+Phone matching/normalization now uses `phonenumbers==9.0.44`. Devanagari character
+conversion uses `indic-transliteration==2.3.83`, with a Hindi pronunciation adapter
+that preserves existing name keys. `linker.py` retains clustering and its public API;
+`detector/patterns.py` retains non-phone detection patterns. The optional phone fallback
+and handwritten Devanagari alphabet tables have been removed.
+
+[Before/after validation](docs/library-integration-2026-11-27.md): 735 cleaned files
+and all linkage manifests are byte-identical on three benchmarks, with unchanged
+scores. Additional tests cover international numbers, grouping and extensions.
+
+## Latest privacy tuning and guideline audit
+
+See [current results and method](docs/privacy-tuning-2026-11-27/README.md) and the
+[guideline audit](docs/privacy-tuning-2026-11-27/GUIDELINES.md). **100% accuracy or privacy
+is not established.** The new default (`max_level: 3`) removes district information only
+for sparse patients after age widening; `max_level: 2` retains the previous geography policy.
+Fixes cover compound guardian labels, conflicting family evidence, Unicode identity
+extraction, and invalid FHIR encounters. Core remains rule-based, with no model training.
+201 tests pass. Earlier headline scores below refer to earlier revisions and datasets.
 
 ## Historical practice results (official kit `dev/`, measured with `test_attacker.py`)
 
@@ -47,8 +61,8 @@ The official submission checks and 189 unit tests pass. This work tuned rules, n
 | Speed / memory | 4.7 s, 35 MB; 6× data (1,200 files) 45 s, 150 MB |
 
 These are practice numbers, not a guarantee on hidden data. `config/privacy.json` sets
-`max_level` 2 (default: districts always kept, 100% medical values) or 3 (stricter
-privacy: the rarest patients also lose their district).
+`max_level` 3 by default (sparse patients also lose their district). Set it to 2
+for the previous district-preserving policy.
 
 ## Other modes
 
@@ -60,9 +74,9 @@ The detector-only mode masks identifiers and fine-grained locations but leaves
 DOB, dates, age and gender unchanged and does not link patients. It is an
 integration checkpoint, not an anonymized research release. Synthetic data only.
 
-Core execution needs only the Python standard library. The optional detector
-requirements add phone validation, YAML editing and development tools; they are
-not automatically installed or required by the submission entry point.
+Core requires pinned `phonenumbers` and `indic-transliteration` packages installed
+by setup. Runtime remains CPU-only and offline, with no model downloads. The
+optional detector requirements add YAML editing and development tools.
 
 ## How the parts fit together
 

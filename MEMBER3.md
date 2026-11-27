@@ -1,15 +1,15 @@
 # Member 3: linkage, pseudonyms, privacy layer and red-team
 
-Current continuation: [27 November evaluation](docs/evaluation-2026-11-27/README.md).
-The tables and policy experiments below are historical, not current acceptance results.
-The current default keeps districts and disease names (`max_level: 2`,
-`rare_name_max_patients: 0`); historical descriptions of removal below apply to earlier
-experiments. Consult `config/privacy.json` and the latest evaluation for current behavior.
-
+Current results: [privacy tuning and evaluation](docs/privacy-tuning-2026-11-27/README.md).
+Compliance evidence and remaining gaps: [guideline audit](docs/privacy-tuning-2026-11-27/GUIDELINES.md).
+The tables and experiments below are historical. The current default uses `max_level: 3`
+(sparse-patient district suppression) and `rare_name_max_patients: 0` (disease names kept).
+No universal accuracy, zero-leak or complete anonymity claim is supported.
 
 | File | Role |
 |---|---|
-| `linker.py` | Devanagari→Latin transliteration, name folding, Jaro-Winkler, blocking, scoring, conflict-safe clustering |
+| `linker.py` | Name folding, Jaro-Winkler, blocking, scoring, conflict-safe clustering; stable transliteration API |
+| `transliteration.py` | indic-transliteration character conversion with compatible Hindi schwa/spelling rules |
 | `privacy.py` | HMAC pseudonyms, per-patient date shifts, age/DOB bands, PIN generalisation, risk levels |
 | `team_processor.py` | The final `Processor(secret)` the runner loads: observe → finish → clean |
 | `config/privacy.json` | Tunable privacy rules (band widths, shift range, k thresholds) |
@@ -25,7 +25,7 @@ Patient outrank names in narrative), relatives (S/o, W/o, `pati ka naam`, FHIR c
 UHID/IPD/Aadhaar/ABHA/PAN/email, phone, DOB, age with the record's latest event year,
 gender, village tokens and ICD codes. Masked Aadhaar suffixes are ignored.
 
-Names are transliterated (schwa-aware), honorifics dropped, variants folded
+Names are transliterated using indic-transliteration (with a schwa-aware adapter), honorifics dropped, variants folded
 (Mohd/Md./Mohammad, Laxmi/Lakshmi, aa/a, ph/f, au/ou) and compared token-by-token
 with Jaro-Winkler, independent of order. Generic particles (Kumar, Devi, Bano, Md.)
 never identify anyone on their own.
@@ -112,8 +112,8 @@ zero identifier/village leaks, 23/23 intervals and a clean contract check.
 ## Reproduce
 
 ```sh
-python3 -m unittest -q
-RAKSHA_SECRET=practice python3 main.py --input KIT/dev/input --output out
+.venv/bin/python -m unittest -q
+RAKSHA_SECRET=practice .venv/bin/python main.py --input KIT/dev/input --output out
 python3 contract_check.py --input KIT/dev/input --output out
 python3 test_attacker.py --kit KIT --output out
 python3 test_attacker.py --kit KIT --scale 6

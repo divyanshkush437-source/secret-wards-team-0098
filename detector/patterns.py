@@ -1,17 +1,12 @@
 """Compiled bounded candidates; calendar parsing has no current-date dependency."""
 import re
 from datetime import date, datetime
-try:
-    import phonenumbers
-except ImportError:
-    phonenumbers = None
+from .phone_numbers import normalize_phone, phone_spans
 
 EMAIL = re.compile(r'(?<![\w.+-])[\w.+-]+@[\w-]+(?:\.[\w-]+)+', re.UNICODE)
 PAN = re.compile(r'(?<!\w)[A-Z]{5}[0-9]{4}[A-Z](?!\w)')
 AADHAAR = re.compile(r'(?<![\w\d+])\d{4}[ -]?\d{4}[ -]?\d{4}(?![\w\d])')   # "+91…" is a phone, not Aadhaar
 ABHA = re.compile(r'(?<![\w\d])\d{2}[ -]?\d{4}[ -]?\d{4}[ -]?\d{4}(?![\w\d])')
-PHONE = re.compile(r'(?<!\w)(?:(?:\+91[ .-]?|0)?[6-9६-९]\d{4}[ .-]?\d{5}|\(0\d{2,4}\)[ .-]?\d{6,8}|0\d{2,4}-\d{6,8})(?!\w)'
-                   r'|\(\s*(?:\+?91[ -]?)?[6-9]\d{4}\s*\)[ .-]?\d{5}(?!\w)')   # "(73036) 71330"
 NUM_DATE = re.compile(r'(?<![\w/.-])(?:\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[-/]\d{1,2}[-/](?:\d{4}|\d{2})|\d{1,2}\.\d{1,2}\.\d{4}|\d{4}\.\d{1,2}\.\d{1,2}|(?:0?[1-9]|[12]\d|3[01])\.(?:0?[1-9]|1[0-2])\.\d{2})(?![\w/-]|\.\d)')
 HI_MONTHS = ['जनवरी', 'फ़रवरी', 'मार्च', 'अप्रैल', 'मई', 'जून', 'जुलाई', 'अगस्त', 'सितंबर', 'अक्टूबर', 'नवंबर', 'दिसंबर']
 HI_MONTH_ALT = {'फरवरी': 2, 'सितम्बर': 9, 'नवम्बर': 11, 'दिसम्बर': 12, 'अक्तूबर': 10, 'अप्रेल': 4}
@@ -28,22 +23,6 @@ GENDER = re.compile(r'(?i)(?<![\w\u0900-\u097f])(?:male|female|महिला|�
 
 def digits(text):
     return ''.join(str(int(c)) for c in text if c.isdecimal())
-
-def normalize_phone(text):
-    raw = digits(text)
-    national = raw[2:] if len(raw) == 12 and raw.startswith('91') else raw
-    national = national[1:] if national.startswith('0') else national
-    if len(national) != 10:
-        return None
-    if phonenumbers is not None:
-        try:
-            parsed = phonenumbers.parse(text, 'IN')
-            if not phonenumbers.is_possible_number(parsed):
-                return None
-            return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
-        except phonenumbers.NumberParseException:
-            return None
-    return '+91' + national
 
 def normalize_date(value, pivot=30, order="DMY"):
     m = re.fullmatch(r'(\d{1,2})\s*([\u0900-\u097f\u093c]+)[,\s]*(\d{4})', value.strip())

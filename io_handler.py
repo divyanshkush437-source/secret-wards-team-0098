@@ -30,6 +30,20 @@ def check_depth(data):
             stack.extend((item, depth + 1) for item in items)
 
 
+def check_fhir_required_fields(data):
+    """Fail closed on missing Encounter fields; this is not a full R4 validator."""
+    stack = [data]
+    while stack:
+        item = stack.pop()
+        if isinstance(item, dict):
+            if item.get('resourceType') == 'Encounter':
+                if not item.get('status') or not isinstance(item.get('class'), dict) or not item['class']:
+                    raise ValueError('invalid FHIR encounter')
+            stack.extend(item.values())
+        elif isinstance(item, list):
+            stack.extend(item)
+
+
 def unique_keys(pairs):
     result = dict(pairs)
     if len(result) != len(pairs):
@@ -102,6 +116,7 @@ def parse(raw, suffix):
         raise ValueError("unsupported format")
     data = json.loads(body, object_pairs_hook=unique_keys, parse_constant=reject_constant, parse_float=finite_float)
     check_depth(data)
+    check_fhir_required_fields(data)
     if isinstance(data, list):
         return Document("list", [(f"/{i}", v) for i, v in enumerate(data)])
     if isinstance(data, dict):

@@ -1,0 +1,26 @@
+{
+  "2117101-input": {
+    "model_valid": 32,
+    "model_invalid": 0
+  },
+  "2117101-output": {
+    "model_valid": 32,
+    "model_invalid": 0
+  },
+  "2117102-input": {
+    "model_valid": 35,
+    "model_invalid": 0
+  },
+  "2117102-output": {
+    "model_valid": 35,
+    "model_invalid": 0
+  },
+  "2117103-input": {
+    "model_valid": 39,
+    "model_invalid": 0
+  },
+  "2117103-output": {
+    "model_valid": 39,
+    "model_invalid": 0
+  }
+}

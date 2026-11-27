@@ -705,6 +705,7 @@ class Gen:
                     {'fullUrl': ids['r'], 'resource': {'resourceType': 'Practitioner', 'id': ids['r'][9:],
                      'name': [{'text': u.keep('doctor', f"Dr. {p['relg'][0]} Mishra", 'doctor-vs-relative')}]}},
                     {'fullUrl': ids['e'], 'resource': {'resourceType': 'Encounter', 'id': ids['e'][9:], 'status': 'finished',
+                     'class': {'system': 'http://terminology.hl7.org/CodeSystem/v3-ActCode', 'code': 'IMP'},
                      'subject': {'reference': ids['p'], 'display': u.ent('PATIENT_NAME', p['name'])},
                      'period': {'start': u.date('admission', start, start.isoformat() + 'T10:30:00+05:30', '"start":'),
                                 'end': u.date('discharge', end, end.isoformat() + 'T12:00:00+05:30', '"end":')}}},

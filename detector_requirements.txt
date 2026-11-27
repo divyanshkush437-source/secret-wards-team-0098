@@ -1,6 +1,6 @@
-# Optional enhancements / development dependencies. Core uses Python stdlib only.
+# Optional enhancements / development dependencies, in addition to core requirements.
 # Install before entering the offline evaluation environment.
-phonenumbers>=8.13,<10
+-r requirements.txt
 PyYAML>=6,<7
 spacy>=3.7,<4
 pytest>=8,<10
